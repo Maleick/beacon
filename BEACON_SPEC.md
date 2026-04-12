@@ -1,8 +1,10 @@
-# Beacon Specification v2
+# Beacon Specification v2 → v3
 
-Status: Design Complete — Ready for Implementation
-Updated: 2026-04-11
+Status: v3 Architecture Locked — Implementation In Progress
+Updated: 2026-04-12
 Platform: Claude Code Plugin (macOS-first, tmux-native)
+
+> **v3 Update:** Architecture redesigned to Advisor + Monitor pattern. See `BEACON_V3_ARCHITECTURE.md` for the full v3 spec. This document is updated below to reflect v3 decisions; the original v2 design is preserved for reference.
 
 ---
 
@@ -10,29 +12,47 @@ Platform: Claude Code Plugin (macOS-first, tmux-native)
 
 Beacon is a Claude Code plugin that provides autonomous multi-agent orchestration. It reads work from GitHub Issues, routes tasks to the best available AI CLI tool, verifies results through dedicated reviewer agents, and auto-merges approved work.
 
-Opus is the sole decision-maker. It never reads or writes code.
+**v3 model:** Sonnet is the executor and event-driven orchestrator. Opus is the advisor — spawned only at strategic decision points (UltraPlan, phase checkpoints, escalations). Haiku handles lightweight event triage and simple tasks. Bash scripts run the Monitor processes.
 
 ---
 
 ## 2. Design Decisions
 
-| #   | Decision           | Choice                                                      | Rationale                                                   |
-| --- | ------------------ | ----------------------------------------------------------- | ----------------------------------------------------------- |
-| 1   | Work discovery     | Hybrid: Discord webhooks + 10-min gh poll                   | Real-time reaction via existing infra + safety net          |
-| 2   | Agent dispatch     | TeamCreate for Claude, tmux CLI for Codex/Gemini            | Native protocol where available, direct CLI otherwise       |
-| 3   | Result capture     | BEACON_RESULT.md per worktree + git diff                    | Agent never reports via conversation — structured file only |
-| 4   | State management   | .beacon/state.json + GitHub labels                          | Fast local access + durable recovery from GitHub            |
-| 5   | Verification       | Dedicated Sonnet reviewer agent                             | Keeps Opus free for orchestration                           |
-| 6   | Concurrency        | Dynamic, soft cap 20, hard cap 50                           | Opus decides based on workload and available quota          |
-| 7   | Post-completion    | verify -> simplify -> verify -> PR -> monitor CI -> cleanup | Full quality pipeline                                       |
-| 8   | Autoresearch       | Automatic for Claude agents only                            | Codex/Gemini can't use Claude Code plugins                  |
-| 9   | Merge gates        | CI green (simple), CI + Sonnet review (medium/complex)      | Trust CI for simple, extra review for complex               |
-| 10  | Repo scope         | Single repo per session                                     | Clean isolation, multi-repo via multiple tmux sessions      |
-| 11  | UltraPlan          | Once at startup + at phase checkpoints                      | Master planning pass, not per-issue                         |
-| 12  | Opus role          | Never reads/writes code                                     | Orchestration decisions only                                |
-| 13  | Plugin format      | Multi-skill Claude Code plugin                              | Auto-update via marketplace                                 |
-| 14  | Tmux layout        | Grid (tiled) not stacked                                    | Visual clarity at 20 panes                                  |
-| 15  | PR review comments | Sonnet agent addresses automated reviewer feedback          | Copilot etc. leave comments, Beacon handles them            |
+### v2 Decisions (original)
+
+| #   | Decision           | Choice                                                 | Rationale                                                   |
+| --- | ------------------ | ------------------------------------------------------ | ----------------------------------------------------------- |
+| 1   | Work discovery     | Hybrid: Discord webhooks + 10-min gh poll              | Real-time reaction via existing infra + safety net          |
+| 2   | Agent dispatch     | TeamCreate for Claude, tmux CLI for Codex/Gemini       | Native protocol where available, direct CLI otherwise       |
+| 3   | Result capture     | BEACON_RESULT.md per worktree + git diff               | Agent never reports via conversation — structured file only |
+| 4   | State management   | .beacon/state.json + GitHub labels                     | Fast local access + durable recovery from GitHub            |
+| 5   | Verification       | Dedicated Sonnet reviewer agent                        | Keeps Opus free for orchestration                           |
+| 6   | Concurrency        | Dynamic, soft cap 20, hard cap 50                      | Opus decides based on workload and available quota          |
+| 7   | Post-completion    | verify → simplify → verify → PR → monitor CI → cleanup | Full quality pipeline                                       |
+| 8   | Autoresearch       | Automatic for Claude agents only                       | Codex/Gemini can't use Claude Code plugins                  |
+| 9   | Merge gates        | CI green (simple), CI + Sonnet review (medium/complex) | Trust CI for simple, extra review for complex               |
+| 10  | Repo scope         | Single repo per session                                | Clean isolation, multi-repo via multiple tmux sessions      |
+| 11  | UltraPlan          | Once at startup + at phase checkpoints                 | Master planning pass, not per-issue                         |
+| 12  | Opus role          | Never reads/writes code                                | Orchestration decisions only                                |
+| 13  | Plugin format      | Multi-skill Claude Code plugin                         | Auto-update via marketplace                                 |
+| 14  | Tmux layout        | Grid (tiled) not stacked                               | Visual clarity at 20 panes                                  |
+| 15  | PR review comments | Sonnet agent addresses automated reviewer feedback     | Copilot etc. leave comments, Beacon handles them            |
+
+### v3 Decisions (locked — supersede v2 where different)
+
+| #   | Decision                 | Choice                                                           |
+| --- | ------------------------ | ---------------------------------------------------------------- |
+| 1   | Orchestrator             | Sonnet (event-driven executor, not Opus)                         |
+| 2   | Opus role                | Advisor only — spawned at hardcoded triggers + Sonnet escalation |
+| 3   | Event detection          | 3 Monitor scripts (5s agents, 30s PRs, 60s issues)               |
+| 4   | Dispatch priority        | Third-party first (Codex/Gemini) for simple/medium               |
+| 5   | Haiku scope              | Simple tasks (2-3 files) + event triage + nit fixing             |
+| 6   | Haiku failure escalation | 1 retry with context, then promote to Sonnet                     |
+| 7   | Agent completion signal  | COMPLETE/BLOCKED/STUCK status words via pipe-pane log            |
+| 8   | Third-party completion   | pane_dead + BEACON_RESULT.md existence (exit codes unreliable)   |
+| 9   | Event queue pattern      | Haiku produces → Sonnet consumes after each pipeline step        |
+| 10  | PR comment triage        | Haiku (nits) → Sonnet (bugs) → Opus (design)                     |
+| 11  | CI autofix               | Tiered: Haiku (lint/format) → Sonnet (logic) → Opus (2+ fails)   |
 
 ---
 
@@ -48,13 +68,15 @@ Opus is the sole decision-maker. It never reads or writes code.
 
 ### Tool Selection Matrix
 
-| Complexity | Primary                      | Fallback 1           | Fallback 2                   |
-| ---------- | ---------------------------- | -------------------- | ---------------------------- |
-| Simple     | Claude Haiku                 | Gemini (if quota)    | Codex Spark (if quota)       |
-| Medium     | Claude Sonnet                | Codex GPT (if quota) | Gemini (if quota)            |
-| Complex    | Claude Sonnet + autoresearch | Codex GPT (if quota) | Re-slice into smaller issues |
+> **v3 update:** Third-party tools dispatch first to maximize external quota usage. Claude is the fallback and sole option for complex work.
 
-Claude is the backbone. Codex and Gemini are tactical — always check quota before dispatch.
+| Complexity | Primary (v3)                    | Fallback              | Last resort              |
+| ---------- | ------------------------------- | --------------------- | ------------------------ |
+| Simple     | Codex/Gemini/Grok (quota > 10%) | Claude Haiku          | Claude Haiku (rate-lim)  |
+| Medium     | Codex/Gemini/Grok (quota > 10%) | Claude Sonnet         | Claude Sonnet (rate-lim) |
+| Complex    | Claude Sonnet + autoresearch    | Claude Sonnet (retry) | Opus advisor: re-slice   |
+
+Claude is always available (Max subscription). Codex and Gemini are prioritized for volume work to burn external quota first.
 
 ---
 
@@ -69,23 +91,24 @@ Claude is the backbone. Codex and Gemini are tactical — always check quota bef
 
 ### 4.2 Startup Flow
 
+> **v3 update:** CronCreate replaced by three Monitor processes. Opus advisor spawned for UltraPlan instead of running it directly.
+
 ```
 1. Validate environment (gh, tmux, git repo)
-2. Detect available tools + check quota
-3. Load .beacon/state.json or initialize fresh
+2. Detect available tools + check quota (hooks/detect-tools.sh)
+3. Load .beacon/state.json or run hooks/beacon-init.sh
 4. Fetch open issues via gh
-5. UltraPlan analysis:
+5. → ADVISOR CALL: Spawn Opus for UltraPlan
    - Classify complexity per issue
    - Parse dependencies (blocks:/depends-on:)
    - Build dependency graph (topological sort)
-   - Assign tools based on complexity + quota
-   - Plan dispatch phases
-   - Set checkpoints
-   - Estimate concurrency
-6. Display plan
-7. Start CronCreate for 10-minute poll safety net
-8. Listen for Discord webhook events (if --channels active)
-9. Begin dispatching Phase 1
+   - Assign tools based on complexity + quota (third-party first)
+   - Plan dispatch phases + checkpoints
+   - Returns structured plan JSON → stored in .beacon/state.json
+6. Start 3 Monitor processes (agents 5s, PRs 30s, issues 60s)
+7. Initialize event queue: .beacon/event-queue.json
+8. Begin dispatching Phase 1 (third-party tools first)
+9. Enter reactive mode — Haiku queues events, Sonnet pulls + acts
 ```
 
 ---
@@ -260,7 +283,7 @@ Beacon responds to Discord commands:
 
 ## 9. Tmux Layout
 
-- Pane 0: Opus orchestrator (main)
+- Pane 0: Sonnet executor (main) — v3; was Opus in v2
 - Agent panes: `tmux select-layout tiled` after each spawn
 - At 20 panes: roughly 5x4 grid
 - Each pane titled: `<TOOL>: <issue-key>`
@@ -355,7 +378,7 @@ When the session hits the 80% compaction threshold:
 
 ## 15. Implementation Milestones
 
-### M1: Foundation
+### M1: Foundation ✅ Complete
 
 - Plugin skeleton + marketplace registration
 - /beacon command + core skill
@@ -364,7 +387,7 @@ When the session hits the 80% compaction threshold:
 - Git worktree manager
 - State file management
 
-### M2: Dispatch + Verification
+### M2: Dispatch + Verification ✅ Complete
 
 - UltraPlan analysis (complexity, dependencies, tool assignment)
 - Claude agent dispatch via TeamCreate
@@ -373,7 +396,7 @@ When the session hits the 80% compaction threshold:
 - Post-completion pipeline (verify → simplify → verify)
 - PR creation + GitHub labels
 
-### M3: Monitoring + Merge
+### M3: Monitoring + Merge ✅ Complete
 
 - Sonnet monitor agent (CI, review comments, conflicts)
 - Auto-merge logic (simple: CI green, medium/complex: + review)
@@ -381,14 +404,14 @@ When the session hits the 80% compaction threshold:
 - Worktree cleanup after merge
 - CronCreate polling (10-minute interval)
 
-### M4: Discord + Autoresearch
+### M4: Discord + Autoresearch 🔄 In Progress
 
-- Discord webhook event handling
-- Discord command channel (work on, skip, pause, resume, status)
-- Autoresearch integration for Claude agents
-- Quota tracking refinement (Codex Spark/GPT split)
+- Discord webhook event handling (skills/beacon-discord-webhook/) — in progress
+- Discord command channel (skills/beacon-discord-commands/) — in progress
+- Autoresearch integration ✅ (included in v3 dispatch skill)
+- Quota tracking refinement ✅ (detect-tools.sh Spark/GPT split)
 
-### M5: Polish + Dogfood
+### M5: Polish + Dogfood 📋 Planned
 
 - Status display with quota bars
 - Tmux grid layout optimization
