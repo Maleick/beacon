@@ -9,6 +9,11 @@ Autonomous multi-agent orchestration plugin for Claude Code.
 - **Reviewer**: Sonnet agent — verifies all work against acceptance criteria
 - **Monitor**: Sonnet agent — watches CI, PR comments, merge status
 
+## Prerequisites
+
+- `jq` — JSON query tool, required for state updates and completion tracking
+  - Install: `brew install jq`
+
 ## Plugin Structure
 
 - `commands/beacon.md` — `/beacon start|status|stop|plan` entry point
