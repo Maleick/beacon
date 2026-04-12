@@ -1,0 +1,11 @@
+{
+  "name": "beacon",
+  "plugins": [
+    {
+      "name": "beacon",
+      "source": ".",
+      "description": "Autonomous multi-agent orchestration — routes GitHub issues to Claude, Codex, and Gemini agents",
+      "keywords": ["orchestration", "multi-agent", "github", "automation"]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+# Beacon workspaces (git worktrees)
+.beacon/workspaces/
+
+# State file (local, rebuilt from GitHub)
+.beacon/state.json
+
+# Logs
+.beacon/logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
