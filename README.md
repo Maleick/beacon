@@ -1,4 +1,16 @@
+<div align="center">
+  <img src="assets/beacon-banner.png" alt="Beacon" width="600" />
+
 # Beacon: Autonomous Multi-Agent GitHub Orchestration
+
+[![Version](https://img.shields.io/badge/version-v0.1-blue?style=flat-square)](https://github.com/Maleick/beacon/releases)
+[![GitHub Stars](https://img.shields.io/github/stars/Maleick/beacon?style=flat-square&color=yellow)](https://github.com/Maleick/beacon/stargazers)
+[![GitHub Issues](https://img.shields.io/github/issues/Maleick/beacon?style=flat-square)](https://github.com/Maleick/beacon/issues)
+[![Platform](https://img.shields.io/badge/platform-Claude%20Code-blueviolet?style=flat-square)](https://claude.ai/code)
+[![Plugin](https://img.shields.io/badge/type-plugin-orange?style=flat-square)](https://github.com/Maleick/beacon)
+[![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
+
+</div>
 
 **Beacon** is a Claude Code plugin that autonomously dispatches AI agents to resolve GitHub issues — routing work to Codex, Gemini, or Claude based on complexity and quota, verifying results, and merging PRs with zero human intervention.
 
