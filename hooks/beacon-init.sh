@@ -4,6 +4,8 @@ set -euo pipefail
 # beacon-init.sh — Initialize .beacon/ directory structure and state file.
 # Idempotent: safe to re-run without losing existing state.
 
+BEACON_VERSION="0.1.0"
+
 BEACON_DIR=".beacon"
 STATE_FILE="$BEACON_DIR/state.json"
 WORKSPACES_DIR="$BEACON_DIR/workspaces"
@@ -18,9 +20,29 @@ REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
 }
 cd "$REPO_ROOT"
 
-# Check for jq dependency
+echo "Beacon v${BEACON_VERSION} initializing..."
+
+# Check for jq dependency and minimum version (>= 1.6 required for --argjson)
 if ! command -v jq >/dev/null 2>&1; then
   echo "Warning: jq not found. Install with: brew install jq" >&2
+else
+  jq_version=$(jq --version 2>/dev/null | sed 's/jq-//' | cut -d. -f1-2) || jq_version="0.0"
+  jq_major=$(echo "$jq_version" | cut -d. -f1)
+  jq_minor=$(echo "$jq_version" | cut -d. -f2)
+  if (( jq_major < 1 || (jq_major == 1 && jq_minor < 6) )); then
+    echo "Warning: jq ${jq_version} found, but >= 1.6 is required. Some features may not work." >&2
+  fi
+fi
+
+# Check for gh CLI and minimum version (>= 2.0 required for --json flag)
+if ! command -v gh >/dev/null 2>&1; then
+  echo "Warning: gh not found. Install with: brew install gh && gh auth login" >&2
+else
+  gh_version=$(gh --version 2>/dev/null | head -1 | awk '{print $3}') || gh_version="0.0.0"
+  gh_major=$(echo "$gh_version" | cut -d. -f1)
+  if (( gh_major < 2 )); then
+    echo "Warning: gh ${gh_version} found, but >= 2.0 is required. Upgrade with: brew upgrade gh" >&2
+  fi
 fi
 
 # Derive owner/repo from git remote
@@ -77,9 +99,11 @@ if [[ ! -f "$STATE_FILE" ]]; then
   jq -n \
     --arg repo "$REPO_SLUG" \
     --arg now "$NOW" \
+    --arg ver "$BEACON_VERSION" \
     --argjson tools "$TOOLS_JSON" \
     '{
       version: 1,
+      beacon_version: $ver,
       repo: $repo,
       started_at: $now,
       updated_at: $now,
@@ -99,6 +123,12 @@ if [[ ! -f "$STATE_FILE" ]]; then
     }' > "$STATE_FILE"
   echo "Initialized $STATE_FILE"
 else
+  # Check for version mismatch and warn (migration notice, non-fatal)
+  existing_ver=$(jq -r '.beacon_version // "unknown"' "$STATE_FILE" 2>/dev/null) || existing_ver="unknown"
+  if [[ "$existing_ver" != "$BEACON_VERSION" ]]; then
+    echo "Notice: state.json has beacon_version=${existing_ver}, current is ${BEACON_VERSION} (migration may be needed)" >&2
+  fi
+
   # Refresh tools section with current quota data without touching other state.
   NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   UPDATED=$(jq --argjson tools "$TOOLS_JSON" --arg now "$NOW" \

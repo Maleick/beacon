@@ -56,6 +56,7 @@ LOG_FILE=".beacon/poll.log"
 
 # Iterate over worktree directories
 CLEANED_COUNT=0
+shopt -s nullglob
 for worktree_dir in "$WORKSPACES_DIR"/*/; do
   # Extract issue key from directory name (e.g., ".beacon/workspaces/issue-16" → "issue-16")
   ISSUE_KEY=$(basename "$worktree_dir")
@@ -99,6 +100,7 @@ for worktree_dir in "$WORKSPACES_DIR"/*/; do
     fi
   fi
 done
+shopt -u nullglob
 
 if [[ $CLEANED_COUNT -gt 0 ]]; then
   echo "Swept and cleaned $CLEANED_COUNT stale worktree(s)"

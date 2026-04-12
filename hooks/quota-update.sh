@@ -22,6 +22,18 @@ REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
 
 QUOTA_FILE="$REPO_ROOT/.beacon/quota.json"
 
+# Parse --dry-run flag from arguments (can appear anywhere)
+DRY_RUN=0
+FILTERED_ARGS=()
+for arg in "$@"; do
+  if [[ "$arg" == "--dry-run" ]]; then
+    DRY_RUN=1
+  else
+    FILTERED_ARGS+=("$arg")
+  fi
+done
+set -- "${FILTERED_ARGS[@]+"${FILTERED_ARGS[@]}"}"
+
 # ---------------------------------------------------------------------------
 # Cost estimates by complexity (percentage points subtracted per dispatch)
 # ---------------------------------------------------------------------------
@@ -83,14 +95,22 @@ cmd_decrement() {
     return 0
   fi
 
+  local cur_pct
+  cur_pct=$(jq -r --arg t "$tool" '.[$t].quota_pct' "$QUOTA_FILE")
+  local new_pct=$(( cur_pct - cost < 0 ? 0 : cur_pct - cost ))
+
+  if [[ $DRY_RUN -eq 1 ]]; then
+    echo "[dry-run] Would decrement $tool by ${cost}%: ${cur_pct}% → ${new_pct}%"
+    if (( new_pct <= 0 )); then echo "[dry-run] QUOTA_EXHAUSTED $tool" >&2
+    elif (( new_pct <= 20 )); then echo "[dry-run] QUOTA_LOW $tool (${new_pct}%)" >&2; fi
+    return 0
+  fi
+
   TMP=$(mktemp)
   jq --arg tool "$tool" --argjson cost "$cost" '
     .[$tool].quota_pct = ([.[$tool].quota_pct - $cost, 0] | max) |
     .[$tool].dispatches += 1
   ' "$QUOTA_FILE" > "$TMP" && mv "$TMP" "$QUOTA_FILE"
-
-  local new_pct
-  new_pct=$(jq -r --arg t "$tool" '.[$t].quota_pct' "$QUOTA_FILE")
   echo "Decremented $tool by ${cost}% → ${new_pct}% remaining"
 
   # Emit warning if below thresholds
@@ -120,6 +140,16 @@ cmd_reset() {
   local tool="${1:-}"
   ensure_init
   TODAY=$(date -u +"%Y-%m-%d")
+  if [[ $DRY_RUN -eq 1 ]]; then
+    if [[ -n "$tool" ]]; then
+      local cur; cur=$(jq -r --arg t "$tool" '.[$t].quota_pct' "$QUOTA_FILE" 2>/dev/null || echo "?")
+      echo "[dry-run] Would reset $tool: ${cur}% → 100% (dispatches → 0)"
+    else
+      echo "[dry-run] Would reset all tools to 100% (dispatches → 0):"
+      jq -r 'to_entries[] | "  \(.key): \(.value.quota_pct)% → 100%"' "$QUOTA_FILE" 2>/dev/null || true
+    fi
+    return 0
+  fi
   TMP=$(mktemp)
   if [[ -n "$tool" ]]; then
     jq --arg t "$tool" --arg d "$TODAY" '
@@ -172,7 +202,8 @@ cmd_refresh() {
 # ---------------------------------------------------------------------------
 
 if [[ $# -lt 1 ]]; then
-  echo "Usage: $0 <init|decrement|set|reset|check|refresh> [args...]" >&2
+  echo "Usage: $0 <init|decrement|set|reset|check|refresh> [args...] [--dry-run]" >&2
+  echo "  --dry-run  Print what would happen without modifying quota.json" >&2
   exit 1
 fi
 
