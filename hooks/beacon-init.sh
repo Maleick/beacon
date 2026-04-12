@@ -15,6 +15,11 @@ REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
 }
 cd "$REPO_ROOT"
 
+# Check for jq dependency
+if ! command -v jq >/dev/null 2>&1; then
+  echo "Warning: jq not found. Install with: brew install jq" >&2
+fi
+
 # Derive owner/repo from git remote
 REPO_SLUG=""
 REMOTE_URL=$(git remote get-url origin 2>/dev/null) || true
