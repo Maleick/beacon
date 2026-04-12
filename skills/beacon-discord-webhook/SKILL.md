@@ -144,7 +144,34 @@ If an embed doesn't match any known GitHub webhook pattern:
 
 1. Do not queue an event
 2. Log it for debugging: append to `.beacon/discord-webhook.log`
-3. Continue processing remaining messages
+3. Increment the `unrecognized_embed_count` counter in `.beacon/state.json`:
+
+```bash
+jq '.unrecognized_embed_count = ((.unrecognized_embed_count // 0) + 1)' \
+  .beacon/state.json > .beacon/state.tmp && mv .beacon/state.tmp .beacon/state.json
+```
+
+4. If the updated count exceeds 3 (i.e., more than 3 consecutive polls have produced unrecognized embeds), write a `webhook_parse_failure` event to `.beacon/event-queue.json` at priority 1:
+
+```bash
+unrecognized_count=$(jq -r '.unrecognized_embed_count // 0' .beacon/state.json)
+if [[ "$unrecognized_count" -gt 3 ]]; then
+  EVENT_QUEUE=".beacon/event-queue.json"
+  [[ ! -f "$EVENT_QUEUE" ]] && echo '[]' > "$EVENT_QUEUE"
+  jq --argjson n "$unrecognized_count" \
+    '. + [{"type": "webhook_parse_failure", "consecutive_unrecognized": $n, "priority": 1, "queued_at": "'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'"}]' \
+    "$EVENT_QUEUE" > "${EVENT_QUEUE}.tmp" && mv "${EVENT_QUEUE}.tmp" "$EVENT_QUEUE"
+fi
+```
+
+5. When any embed **is** successfully recognized and parsed, reset the counter:
+
+```bash
+jq '.unrecognized_embed_count = 0' \
+  .beacon/state.json > .beacon/state.tmp && mv .beacon/state.tmp .beacon/state.json
+```
+
+6. Continue processing remaining messages
 
 ## Step 8: Update Poll Timestamp
 

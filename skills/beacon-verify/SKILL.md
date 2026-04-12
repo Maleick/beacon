@@ -91,9 +91,15 @@ cd .beacon/workspaces/<issue-key>
 git tag beacon-pre-simplify-<issue-key>
 ```
 
-Spawn a Sonnet agent in the worktree to run code simplification:
+Build the explicit file list before spawning:
 
-- Focus only on files changed in the diff: `git diff --name-only main...beacon/<issue-key>`
+```bash
+SIMPLIFY_FILES=$(git -C .beacon/workspaces/<issue-key> diff --name-only main...HEAD)
+```
+
+Spawn a Sonnet agent in the worktree to run code simplification with the following constraints embedded in the prompt:
+
+- **Scope**: "Simplify ONLY these files: [$SIMPLIFY_FILES]. Do not open, read, or modify any other files."
 - Run the `code-simplifier` skill if available, otherwise instruct Sonnet directly
 - Constraints: must not break tests, must not change behavior, must not alter public API
 
@@ -121,7 +127,13 @@ Continue to Step 4 with the pre-simplification code. Log that simplification was
 
 ```bash
 cd .beacon/workspaces/<issue-key>
-git add -A
+# Stage only files changed from the base branch — avoids staging BEACON_PROMPT.md,
+# .watcher.pid, debug files, and other unintended artifacts
+CHANGED_FILES=$(git diff --name-only main...HEAD)
+if [ -n "$CHANGED_FILES" ]; then
+  git add $CHANGED_FILES
+fi
+# If CHANGED_FILES is empty, the agent already committed everything — skip the add step
 git commit -m "<issue-key>: <issue-title>
 
 Closes #<issue-number>

@@ -38,7 +38,15 @@ cat .beacon/quota.json 2>/dev/null || echo '{}'
 }
 ```
 
-Use this file — not `state.json .tools` — as the authoritative source for the QUOTA section. Claude's quota is always 100% (Max subscription).
+Use this file — not `state.json .tools` — as the authoritative source for the QUOTA section.
+
+For Claude's quota line: check if `quota.json` has a `claude` entry. If it does, render the bar from that entry's `quota_pct`. If no `claude` entry exists (the common case with Claude Max subscription), do **not** show a hardcoded full bar — instead display:
+
+```
+Claude:      Claude Max — N dispatches (session)
+```
+
+where N comes from `state.json` → `stats.claude_dispatches` (or `0` if not set). This accurately reflects session usage without fabricating a percentage.
 
 **If file is corrupted** (invalid JSON): Display error and suggest recovery:
 
@@ -103,7 +111,7 @@ AGENTS (3 active / 20 max)
   [Gemini] #48 — Update docs              (3m)
 
 QUOTA
-  Claude:      ████████████████████ available
+  Claude:      Claude Max — 4 dispatches (session)
   Codex Spark: ████████░░░░░░░░░░░░ ~40%  (7 dispatches)
   Codex GPT:   ██████████████░░░░░░ ~70%  (3 dispatches)
   Gemini:      ██████░░░░░░░░░░░░░░ ~30%  (5 dispatches)

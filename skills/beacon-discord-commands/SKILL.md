@@ -27,10 +27,10 @@ If the file does not exist, treat all fetched messages as new (first run).
 Use the Discord MCP tool to poll for messages:
 
 ```
-mcp__plugin_discord_discord__fetch_messages
+mcp__plugin_discord_discord__fetch_messages(since: "<LAST_SEEN>")
 ```
 
-- If `LAST_SEEN` is set, only process messages with IDs newer than the stored value.
+- Pass `since: "<LAST_SEEN>"` when `LAST_SEEN` is non-empty so only messages newer than the last-seen ID are returned. If `LAST_SEEN` is empty (first run), omit the `since` parameter to fetch recent history.
 - If no new messages exist, skip to Step 7 (update timestamp and exit).
 
 ## Step 3: Parse Commands

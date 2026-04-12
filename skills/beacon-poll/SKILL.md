@@ -30,12 +30,13 @@ api_failures=$(jq -r '.consecutive_api_failures // 0' .beacon/state.json 2>/dev/
 Fetch open issues:
 
 ```bash
-if live_issues=$(gh issue list --state open --json number,title,body,labels,updatedAt --limit 200 2>/tmp/gh_error); then
+POLL_ERROR_TMP=$(mktemp .beacon/poll-error.XXXXXX.tmp)
+if live_issues=$(gh issue list --state open --json number,title,body,labels,updatedAt --limit 200 2>"$POLL_ERROR_TMP"); then
   # Reset failure counter on success
   jq '.consecutive_api_failures = 0' .beacon/state.json > .beacon/state.tmp && mv .beacon/state.tmp .beacon/state.json
 else
   api_failures=$((api_failures + 1))
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] GitHub API error (attempt $api_failures): $(cat /tmp/gh_error)" >> .beacon/poll.log
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] GitHub API error (attempt $api_failures): $(cat "$POLL_ERROR_TMP")" >> .beacon/poll.log
   echo "GitHub API error, will retry on next poll" >&2
 
   # Update consecutive failure counter in state
@@ -51,9 +52,11 @@ else
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] github_api_down event queued after $api_failures consecutive failures" >> .beacon/poll.log
   fi
 
+  rm -f "$POLL_ERROR_TMP"
   # Skip the rest of this poll cycle — do not crash
   exit 0
 fi
+rm -f "$POLL_ERROR_TMP"
 ```
 
 This returns all currently **open** issues. Store the result as `live_issues`.
@@ -61,11 +64,13 @@ This returns all currently **open** issues. Store the result as `live_issues`.
 Also fetch recently closed issues (closed in the past 30 minutes) to catch external closures:
 
 ```bash
-if ! closed_issues=$(gh issue list --state closed --json number,title,labels,updatedAt --limit 50 \
-    | jq '[.[] | select(.updatedAt > (now - 1800 | todate))]' 2>/tmp/gh_error); then
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] GitHub API warning (closed issues fetch): $(cat /tmp/gh_error)" >> .beacon/poll.log
+POLL_CLOSED_TMP=$(mktemp .beacon/poll-error.XXXXXX.tmp)
+if ! closed_issues=$(gh issue list --state closed --json number,title,labels,updatedAt,closedAt --limit 50 \
+    | jq '[.[] | select(.closedAt > (now - 1800 | todate))]' 2>"$POLL_CLOSED_TMP"); then
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] GitHub API warning (closed issues fetch): $(cat "$POLL_CLOSED_TMP")" >> .beacon/poll.log
   closed_issues='[]'  # Non-fatal — continue with empty closed list
 fi
+rm -f "$POLL_CLOSED_TMP"
 ```
 
 ## Step 3: Diff Against Known State
@@ -77,10 +82,9 @@ Build three lists by comparing `live_issues` against the `issues` map in `.beaco
 Issues in `live_issues` that are **not** present in `.beacon/state.json`.
 
 ```bash
-# Pseudocode — implement with jq
-known_numbers=$(jq -r '.issues | keys[]' .beacon/state.json)
-live_numbers=$(echo "$live_issues" | jq -r '.[].number')
-new_issues=$(comm -13 <(echo "$known_numbers" | sort) <(echo "$live_numbers" | sort))
+# Use jq for numeric-aware comparison — avoids lexicographic sort bugs (e.g. #100 before #9)
+new_issues=$(jq --argjson known "$(jq '[.issues | keys[] | ltrimstr("issue-") | tonumber]' .beacon/state.json)" \
+  '[.[] | .number | select(. as $n | $known | index($n) == null)]' <<< "$live_issues")
 ```
 
 ### Closed Issues
