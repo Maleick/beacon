@@ -6,17 +6,19 @@ tools: ["Bash", "Agent", "Write", "Read", "TeamCreate"]
 
 # Beacon Dispatch Protocol — v3
 
-Third-party tools (Codex/Gemini/Grok) are dispatched first for simple and medium issues to maximize external quota usage. Claude agents are reserved for complex work and fallback.
+Third-party tools (Codex/Gemini) are dispatched first for simple and medium issues to maximize external quota usage. Claude agents are reserved for complex work and fallback.
 
 ---
 
 ## Dispatch Priority Matrix
 
-| Complexity | Primary                        | Fallback              | Last Resort              |
-| ---------- | ------------------------------ | --------------------- | ------------------------ |
-| Simple     | Codex/Gemini/Grok (quota > 0%) | Claude Haiku          | Claude Haiku (rate-lim)  |
-| Medium     | Codex/Gemini/Grok (quota > 0%) | Claude Sonnet         | Claude Sonnet (rate-lim) |
-| Complex    | Claude Sonnet + autoresearch   | Claude Sonnet (retry) | Opus advisor: re-slice   |
+| Complexity | Primary                      | Fallback              | Last Resort              |
+| ---------- | ---------------------------- | --------------------- | ------------------------ |
+| Simple     | Codex/Gemini (quota > 10%)   | Claude Haiku          | Claude Haiku (rate-lim)  |
+| Medium     | Codex/Gemini (quota > 10%)   | Claude Sonnet         | Claude Sonnet (rate-lim) |
+| Complex    | Claude Sonnet + autoresearch | Claude Sonnet (retry) | Opus advisor: re-slice   |
+
+# TODO: Grok support pending CLI detection
 
 Check quota before dispatch:
 
@@ -31,8 +33,8 @@ bash hooks/quota-update.sh check
 **Quota thresholds:**
 
 - `quota_pct == -1` → unknown, treat as available
-- `quota_pct >= 20` → available, dispatch normally
-- `0 < quota_pct < 20` → warn Opus advisor before dispatching (QUOTA_LOW)
+- `quota_pct > 10` → available, dispatch normally
+- `0 < quota_pct <= 10` → warn Opus advisor before dispatching (QUOTA_LOW)
 - `quota_pct == 0` → exhausted, skip tool entirely
 
 ```bash
@@ -41,7 +43,7 @@ SPARK_Q=$(jq '.["codex-spark"].quota_pct' .beacon/quota.json 2>/dev/null || echo
 if (( SPARK_Q == 0 )); then
   # Skip codex-spark, try next tool
   :
-elif (( SPARK_Q < 20 && SPARK_Q != -1 )); then
+elif (( SPARK_Q <= 10 && SPARK_Q != -1 )); then
   # Log warning but proceed — operator can override
   echo "QUOTA_LOW codex-spark (${SPARK_Q}%)" >> .beacon/poll.log
 fi
@@ -134,7 +136,9 @@ Implement the following GitHub issue in this repository.
 
 ## When Finished
 
-Write BEACON_RESULT.md in the repo root:
+Write `BEACON_RESULT.md` to the current working directory (the worktree root).
+Do not write to the parent repository. The expected path is:
+`.beacon/workspaces/<issue-key>/BEACON_RESULT.md`
 
 ```
 
@@ -177,12 +181,25 @@ tmux pipe-pane -t $PANE_ID "cat >> .beacon/workspaces/$ISSUE_KEY/pane.log"
 Send command:
 
 ```bash
-# Codex
-tmux send-keys -t $PANE_ID "codex -p \"$(cat BEACON_PROMPT.md)\" --auto-edit && echo COMPLETE || echo STUCK" Enter
+# Codex — use --prompt-file to avoid shell injection from issue body content
+tmux send-keys -t $PANE_ID "codex --prompt-file BEACON_PROMPT.md --auto-edit; for i in \$(seq 1 5); do [[ -f BEACON_RESULT.md ]] && break; sleep 1; done; [[ -f BEACON_RESULT.md ]] && echo COMPLETE || echo STUCK" Enter
 
-# Gemini
-tmux send-keys -t $PANE_ID "gemini -p \"$(cat BEACON_PROMPT.md)\" && echo COMPLETE || echo STUCK" Enter
+# Gemini — no native file flag; write a wrapper script and execute it instead
+cat > .beacon/workspaces/$ISSUE_KEY/run-agent.sh << 'WRAPPER'
+#!/usr/bin/env bash
+set -euo pipefail
+gemini --prompt-file BEACON_PROMPT.md
+for i in $(seq 1 5); do
+  [[ -f BEACON_RESULT.md ]] && break
+  sleep 1
+done
+[[ -f BEACON_RESULT.md ]] && echo COMPLETE || echo STUCK
+WRAPPER
+chmod +x .beacon/workspaces/$ISSUE_KEY/run-agent.sh
+tmux send-keys -t $PANE_ID "bash run-agent.sh" Enter
 ```
+
+Never inline file contents into shell strings. Always use a file flag or wrapper script to avoid shell metacharacter injection from issue bodies.
 
 Update state and decrement quota:
 
@@ -286,7 +303,7 @@ You are a Beacon worker agent. Implement the following GitHub issue.
 - Run tests after making changes
 - Commit your work to `beacon/<issue-key>`
 - Do NOT push, merge, or close the issue
-- When finished, write `BEACON_RESULT.md` (template below)
+- When finished, write `BEACON_RESULT.md` to the current working directory (the worktree root). Do not write to the parent repository.
 
 ## BEACON_RESULT.md Template
 
@@ -365,7 +382,7 @@ You are a Beacon worker agent. Implement the following GitHub issue.
 - Run tests after making changes
 - Commit your work to `beacon/<issue-key>`
 - Do NOT push, merge, or close the issue
-- When finished, write `BEACON_RESULT.md` (template below)
+- When finished, write `BEACON_RESULT.md` to the current working directory (the worktree root). Do not write to the parent repository.
 
 ## BEACON_RESULT.md Template
 
