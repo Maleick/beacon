@@ -4,5 +4,19 @@
   "author": {
     "name": "Maleick",
     "url": "https://github.com/Maleick"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/beacon-activate.sh",
+            "timeout": 15,
+            "statusMessage": "Initializing Beacon..."
+          }
+        ]
+      }
+    ]
   }
 }
