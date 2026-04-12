@@ -343,9 +343,10 @@ After merge:
 
 Apply these labels to issues for recovery:
 
-- `beacon:in-progress` — agent is working on it
-- `beacon:blocked` — all agents failed, needs human review
-- `beacon:done` — completed and merged (auto-removed after cleanup)
+- `beacon:in-progress` — agent is working on it (applied by set-running action)
+- `beacon:blocked` — all agents failed, needs human review (applied by set-blocked and set-failed actions)
+- `beacon:paused` — orchestration halted, awaiting resume (applied by set-paused action during stop)
+- `beacon:done` — completed and merged, lifecycle labels removed during cleanup (applied by set-merged action)
 
 ## Tmux Layout
 
@@ -375,7 +376,11 @@ When Beacon starts and finds an existing `.beacon/state.json`:
 3. For each pane still alive: agent is still running — update state to match
 4. For each pane dead: check worktree for `BEACON_RESULT.md` — if present, enter verification pipeline; if absent, mark for re-dispatch
 5. Poll GitHub for current issue/PR state: `gh issue list --state open --json number,labels` and `gh pr list --json number,state,mergedAt --label beacon`
-6. Reconcile local state with GitHub labels (labels are the source of truth for durable state)
+6. Reconcile local state with GitHub labels (labels are the source of truth for durable state):
+   - Issues with `beacon:in-progress` → restore to "running" state if worktree exists, else re-dispatch
+   - Issues with `beacon:blocked` → restore to "blocked" state, human review needed
+   - Issues with `beacon:done` → restore to "merged" state and remove all lifecycle labels (cleanup)
+   - Issues with `beacon:paused` → restore to "paused" state, awaiting manual resume
 7. Resume orchestration from last checkpoint — do NOT re-run UltraPlan (plan is preserved in state file)
 
 ### Context Compaction
