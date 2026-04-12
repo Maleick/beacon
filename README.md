@@ -1,211 +1,120 @@
-# Beacon
+# Beacon: Autonomous Multi-Agent GitHub Orchestration
 
-Autonomous multi-agent orchestration plugin for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Routes GitHub issues to AI CLI tools (Claude, Codex, Gemini, Grok), verifies results, and auto-merges approved work.
+**Beacon** is a Claude Code plugin that autonomously dispatches AI agents to resolve GitHub issues — routing work to Codex, Gemini, or Claude based on complexity and quota, verifying results, and merging PRs with zero human intervention.
+
+## How It Works
+
+Beacon runs a four-tier orchestration loop inside Claude Code:
+
+1. **Monitor** — Three bash watchers poll GitHub issues (60s), PR status (30s), and agent completion (5s) via the Monitor tool
+2. **Triage** — Claude Haiku interprets events and writes prioritized actions to an event queue
+3. **Execute** — Claude Sonnet consumes the queue, dispatches agents to isolated git worktrees, and drives the verification pipeline
+4. **Advise** — Claude Opus is spawned only at strategic decision points (UltraPlan, phase checkpoints, repeated failures)
+
+```
+GitHub Issues → Monitor Scripts → Haiku Triage → Sonnet Executor → Opus Advisor
+                     ↑                                  ↓
+              PR/CI/agent events           Codex · Gemini · Grok · Claude agents
+                                                         ↓
+                                          Verify → Simplify → PR → Merge
+```
+
+## Key Features
+
+**Third-party first dispatch.** Beacon routes simple and medium issues to Codex, Gemini, or Grok before burning Claude quota. Claude Haiku and Sonnet serve as reliable fallbacks, with Opus reserved for strategic decisions only.
+
+**Worktree isolation.** Each issue gets its own git worktree and tmux pane. Agents work concurrently without stepping on each other. Completion is detected via structured status words (`COMPLETE`, `BLOCKED`, `STUCK`) captured in pane logs — no polling required.
+
+**Tiered escalation.** Haiku handles simple issues (2-3 files). On failure, it retries once with context, then auto-promotes to Sonnet. Sonnet escalates to Opus after two failures. PR comments are triaged the same way: Haiku fixes nits, Sonnet handles bugs, Opus handles design escalations.
+
+**Verification pipeline.** Every completed issue runs through: Sonnet review against acceptance criteria → simplify pass → PR creation → CI monitoring → auto-merge (simple) or human review gate (complex).
+
+**Discord integration.** Webhook events trigger issue dispatch in real time. A command channel accepts operator commands (`work on`, `skip`, `pause`, `resume`) without leaving Discord.
+
+**Quota tracking.** A decay-based quota estimator updates `quota.json` after each dispatch and surfaces usage in `/beacon status` as ASCII progress bars.
+
+## Installation
+
+Requires Claude Code with plugin support.
+
+```bash
+# Install via plugin marketplace
+/install-plugin https://github.com/maleick/beacon
+
+# Or install locally during development
+/install-plugin /path/to/beacon
+```
+
+**Prerequisites:**
+
+- `jq` — `brew install jq`
+- `gh` — GitHub CLI, authenticated (`gh auth login`)
+- At least one AI CLI tool: `codex`, `gemini`, or `grok` (optional but recommended for quota efficiency)
+
+## Commands
+
+| Command          | Purpose                                                     |
+| ---------------- | ----------------------------------------------------------- |
+| `/beacon start`  | Launch orchestration for the current repo                   |
+| `/beacon status` | Show running agents, quota bars, and progress               |
+| `/beacon stop`   | Gracefully stop all agents                                  |
+| `/beacon plan`   | Analyze issues and build execution plan without dispatching |
+
+## Status Display
+
+```
+● Beacon — 3 active · 7 complete · 1 blocked
+─────────────────────────────────────────────
+  #12  feature: add dark mode       [Codex  ] 4m
+  #15  fix: auth token expiry       [Haiku  ] 2m
+  #18  refactor: query optimizer    [Sonnet ] 11m
+
+  Quota  Claude  ████████████░░░░░░░░  61%
+         Codex   ██████░░░░░░░░░░░░░░  31%
+```
 
 ## Architecture
 
-Beacon v3 uses an **Advisor + Monitor** pattern: Sonnet runs the event loop, Opus advises at strategic decision points, and Haiku handles lightweight triage.
+| Role             | Model                  | Trigger                                                     |
+| ---------------- | ---------------------- | ----------------------------------------------------------- |
+| Executor         | Sonnet                 | Every event from queue                                      |
+| Advisor          | Opus                   | UltraPlan · phase checkpoint · 2+ failures · LOW_CONFIDENCE |
+| Worker (simple)  | Haiku / Codex / Gemini | 1-3 file changes                                            |
+| Worker (medium)  | Sonnet / Gemini Pro    | Multi-file, moderate complexity                             |
+| Worker (complex) | Sonnet + autoresearch  | Cross-cutting, architectural                                |
+| Triage           | Haiku                  | Every Monitor event                                         |
+| Reviewer         | Sonnet                 | Post-completion verification                                |
 
-### Four-Tier Model
-
-```mermaid
-graph TB
-    subgraph "Tier 1: Bash"
-        M1[Agent Monitor<br/>5s poll]
-        M2[PR Monitor<br/>30s poll]
-        M3[Issue Monitor<br/>60s poll]
-    end
-
-    subgraph "Tier 2: Haiku"
-        ET[Event Triage]
-        EQ[Event Queue<br/>.beacon/event-queue.json]
-        SW[Simple Worker]
-        NF[Nit Fixer]
-    end
-
-    subgraph "Tier 3: Sonnet"
-        ORC[Orchestrator]
-        MW[Medium/Complex Worker]
-        REV[Reviewer]
-        PR[PR Creator]
-    end
-
-    subgraph "Tier 4: Opus"
-        UP[UltraPlan]
-        ADV[Advisor]
-    end
-
-    M1 --> ET
-    M2 --> ET
-    M3 --> ET
-    ET --> EQ
-    EQ --> ORC
-    ORC --> SW
-    ORC --> MW
-    ORC --> REV
-    REV --> PR
-    ORC -.->|escalation| ADV
-    ADV -.->|decisions| ORC
-    UP -.->|initial plan| ORC
-    NF --> PR
-
-    style M1 fill:#e3f2fd
-    style M2 fill:#e3f2fd
-    style M3 fill:#e3f2fd
-    style ET fill:#fff3e0
-    style EQ fill:#fff3e0
-    style SW fill:#fff3e0
-    style NF fill:#fff3e0
-    style ORC fill:#e8f5e9
-    style MW fill:#e8f5e9
-    style REV fill:#e8f5e9
-    style PR fill:#e8f5e9
-    style UP fill:#fce4ec
-    style ADV fill:#fce4ec
-```
-
-### Event Flow
-
-```mermaid
-sequenceDiagram
-    participant B as Bash Monitor
-    participant H as Haiku Triage
-    participant Q as Event Queue
-    participant S as Sonnet Orchestrator
-    participant R as Reviewer
-    participant O as Opus Advisor
-    participant GH as GitHub
-
-    Note over B,GH: Agent completes work
-    B->>H: [AGENT_STATUS] key=issue-25 status=COMPLETE
-    H->>Q: {type: "verify", issue: "issue-25"}
-    S->>Q: Pull next event
-    Q->>S: verify issue-25
-    S->>R: Spawn reviewer agent
-    R->>S: VERDICT: PASS
-    S->>GH: Create PR
-
-    Note over B,GH: Agent gets stuck (2nd attempt)
-    B->>H: [AGENT_STATUS] key=issue-30 status=STUCK
-    H->>Q: {type: "stuck", issue: "issue-30", attempt: 2}
-    S->>Q: Pull next event
-    S->>O: "Issue #30 failed twice. Re-slice or block?"
-    O->>S: "Re-slice into #30a and #30b"
-    S->>GH: Create sub-issues
-```
-
-### Dispatch Strategy
-
-```mermaid
-flowchart LR
-    I[GitHub Issue] --> C{Complexity?}
-    C -->|Simple| TP1{Third-party<br/>available?}
-    C -->|Medium| TP2{Third-party<br/>available?}
-    C -->|Complex| SN2[Sonnet Worker<br/>+ autoresearch]
-
-    TP1 -->|Yes| CX1[Codex/Gemini/Grok]
-    TP1 -->|No| HK[Haiku Worker]
-    TP2 -->|Yes| CX2[Codex/Gemini/Grok]
-    TP2 -->|No| SN1[Sonnet Worker]
-
-    CX1 --> V[Verify Pipeline]
-    CX2 --> V
-    HK --> V
-    SN1 --> V
-    SN2 --> V
-
-    V -->|PASS| PR[Create PR]
-    V -->|FAIL attempt 1| RE[Retry with context]
-    V -->|FAIL attempt 2+| OP[Opus Advisor]
-    RE --> V
-    OP -->|re-slice| I
-    OP -->|block| BL[Blocked]
-
-    style CX1 fill:#e3f2fd
-    style CX2 fill:#e3f2fd
-    style HK fill:#fff3e0
-    style SN1 fill:#e8f5e9
-    style SN2 fill:#e8f5e9
-    style OP fill:#fce4ec
-```
-
-### CI Autofix Loop
-
-```mermaid
-flowchart TD
-    CI[CI Failure Detected] --> CL{Error Type?}
-    CL -->|Lint/Format/Type| HK[Haiku fixes]
-    CL -->|Test/Build| SN[Sonnet fixes]
-    HK --> P[Push + Re-trigger CI]
-    SN --> P
-    P --> R{CI Result?}
-    R -->|Pass| D[Done]
-    R -->|Fail again| CT{Attempt count?}
-    CT -->|< 2| CL
-    CT -->|>= 2| OP[Opus Advisor]
-    OP -->|re-approach| CL
-    OP -->|block| BL[Block PR]
-
-    style HK fill:#fff3e0
-    style SN fill:#e8f5e9
-    style OP fill:#fce4ec
-```
+State persists in `.beacon/state.json` (local) and GitHub labels (durable across sessions).
 
 ## Plugin Structure
 
 ```
-beacon/
-  .claude-plugin/plugin.json    # Plugin metadata
-  skills/
-    beacon/SKILL.md             # Core orchestration skill
-    beacon-dispatch/SKILL.md    # Agent dispatch protocol
-    beacon-verify/SKILL.md      # Verification pipeline
-    beacon-status/SKILL.md      # Status display
-    beacon-poll/SKILL.md        # GitHub issue sync
-  commands/
-    beacon.md                   # /beacon start|status|stop|plan|help
-  agents/
-    reviewer.md                 # Structured verification agent
-    monitor.md                  # PR/CI monitoring agent
-  hooks/
-    beacon-init.sh              # Initialize .beacon/ workspace
-    detect-tools.sh             # Detect available AI CLIs + quota
-    update-state.sh             # State machine transitions + GitHub labels
-    check-completion.sh         # Query tmux for dead panes
-    cleanup-worktree.sh         # Remove worktree, branch, close issue
-    sweep-stale.sh              # Clean up orphaned worktrees
+commands/beacon.md          — /beacon entry point
+skills/beacon/              — Core orchestration protocol
+skills/beacon-dispatch/     — Agent dispatch (third-party first)
+skills/beacon-verify/       — Post-completion pipeline
+skills/beacon-status/       — Status display with quota bars
+skills/beacon-poll/         — GitHub issue sync safety net
+agents/haiku-triage.md      — Haiku event interpreter
+agents/monitor.md           — CI/PR monitor agent
+agents/reviewer.md          — Sonnet verification reviewer
+hooks/beacon-init.sh        — Initialize .beacon/ state directory
+hooks/detect-tools.sh       — Detect available AI CLIs + quota
+hooks/monitor-agents.sh     — Agent completion watcher (5s)
+hooks/monitor-prs.sh        — PR CI/merge status watcher (30s)
+hooks/monitor-issues.sh     — GitHub issue watcher (60s)
+hooks/cleanup-worktree.sh   — Remove worktree + branch on close
+hooks/sweep-stale.sh        — Clean orphaned worktrees on startup
 ```
 
-## State Management
+## Design Decisions
 
-- **Local**: `.beacon/state.json` — issues, plan phases, tool quotas, stats
-- **Durable**: GitHub labels (`beacon:in-progress`, `beacon:blocked`, `beacon:paused`, `beacon:done`) for cross-session recovery
-- **Event queue**: `.beacon/event-queue.json` — Haiku writes, Sonnet reads
+Eleven v3 design decisions are documented in [wiki/Design-Decisions.md](wiki/Design-Decisions.md). Key choices:
 
-## Prerequisites
+- **Sonnet as executor, not Opus** — Opus is expensive; Sonnet handles reactive event processing at scale
+- **Monitor over CronCreate** — Monitor tool streams events; cron polling misses rapid state changes
+- **Status words over pane_dead** — `COMPLETE`/`BLOCKED`/`STUCK` are reliable; pane death is ambiguous
+- **Third-party first** — Preserving Claude Max quota for complex work extends daily capacity significantly
 
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
-- `gh` (GitHub CLI, authenticated)
-- `tmux` (for third-party agent dispatch)
-- `jq` (JSON processing)
-- Git repository with GitHub remote
-
-## Usage
-
-```bash
-# Start autonomous orchestration
-/beacon start
-
-# Check status of all agents and issues
-/beacon status
-
-# View the current plan
-/beacon plan
-
-# Stop all agents gracefully
-/beacon stop
-```
-
-## License
-
-MIT
+See [BEACON_SPEC.md](BEACON_SPEC.md) for the full specification and [wiki/Architecture.md](wiki/Architecture.md) for the complete four-tier model.
