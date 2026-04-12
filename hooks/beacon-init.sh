@@ -72,4 +72,31 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
   echo "Initialized $CONFIG_FILE (add test_command, etc. for overrides)"
 fi
 
+# Create GitHub labels if the repo is on GitHub and gh CLI is available
+create_github_labels() {
+  # Check if gh CLI is available
+  if ! command -v gh &> /dev/null; then
+    return 0
+  fi
+
+  # Check if we're in a GitHub repo (REPO_SLUG will be set)
+  if [[ -z "$REPO_SLUG" ]]; then
+    return 0
+  fi
+
+  # Create each label if it doesn't exist (bash 3.2 compatible — no associative arrays)
+  local pairs="beacon:in-progress=FFEB3B beacon:blocked=F44336 beacon:paused=FF9800 beacon:done=4CAF50"
+  for pair in $pairs; do
+    label="${pair%%=*}"
+    color="${pair#*=}"
+    if ! gh label list --repo "$REPO_SLUG" --json name --jq ".[].name" 2>/dev/null | grep -q "^${label}$"; then
+      echo "Creating label: $label (color: $color)"
+      gh label create "$label" --repo "$REPO_SLUG" --color "$color" --description "Beacon orchestration label" 2>/dev/null || true
+    fi
+  done
+}
+
+# Attempt to create labels (non-fatal if it fails)
+create_github_labels || true
+
 echo "Beacon workspace ready at $BEACON_DIR"

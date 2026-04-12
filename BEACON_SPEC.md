@@ -221,11 +221,12 @@ Step 6: CLEANUP
 
 ### 7.2 GitHub Labels (Durable Recovery)
 
-- `beacon:in-progress` — agent working on it
-- `beacon:blocked` — all agents failed, needs human review
-- `beacon:done` — completed and merged
+- `beacon:in-progress` — agent working on it (color: yellow)
+- `beacon:blocked` — all agents failed, needs human review (color: red)
+- `beacon:paused` — orchestration halted, awaiting resume (color: orange)
+- `beacon:done` — completed and merged (color: green)
 
-On restart: reconcile local state with GitHub labels + PR status.
+Labels are created automatically on first run. On restart: reconcile local state with GitHub labels + PR status.
 
 ---
 
