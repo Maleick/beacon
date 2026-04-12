@@ -55,6 +55,11 @@ TOOLS_JSON=$(printf '%s' "$TOOLS_RAW" | jq '
     "gemini":     {"status": "unavailable", "quota_pct": -1}
   }'
 
+# Initialize quota.json if it doesn't exist (creates decay-tracking file for third-party tools)
+if [[ ! -f "$BEACON_DIR/quota.json" ]]; then
+  bash "$SCRIPT_DIR/quota-update.sh" init 2>/dev/null || true
+fi
+
 # Initialize state.json only if it doesn't exist
 if [[ ! -f "$STATE_FILE" ]]; then
   NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")

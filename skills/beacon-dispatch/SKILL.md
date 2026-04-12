@@ -12,23 +12,40 @@ Third-party tools (Codex/Gemini/Grok) are dispatched first for simple and medium
 
 ## Dispatch Priority Matrix
 
-| Complexity | Primary                         | Fallback              | Last Resort              |
-| ---------- | ------------------------------- | --------------------- | ------------------------ |
-| Simple     | Codex/Gemini/Grok (quota > 10%) | Claude Haiku          | Claude Haiku (rate-lim)  |
-| Medium     | Codex/Gemini/Grok (quota > 10%) | Claude Sonnet         | Claude Sonnet (rate-lim) |
-| Complex    | Claude Sonnet + autoresearch    | Claude Sonnet (retry) | Opus advisor: re-slice   |
+| Complexity | Primary                        | Fallback              | Last Resort              |
+| ---------- | ------------------------------ | --------------------- | ------------------------ |
+| Simple     | Codex/Gemini/Grok (quota > 0%) | Claude Haiku          | Claude Haiku (rate-lim)  |
+| Medium     | Codex/Gemini/Grok (quota > 0%) | Claude Sonnet         | Claude Sonnet (rate-lim) |
+| Complex    | Claude Sonnet + autoresearch   | Claude Sonnet (retry) | Opus advisor: re-slice   |
 
 Check quota before dispatch:
 
 ```bash
-# Read current quota from state
-jq '.tools' .beacon/state.json
+# Refresh daily quota estimates (auto-resets if crossed midnight)
+bash hooks/quota-update.sh refresh
 
-# Refresh if > 30 minutes old
-bash hooks/detect-tools.sh | jq '.'
+# Read current quota estimates
+bash hooks/quota-update.sh check
 ```
 
-Skip any tool with `quota_pct < 10` or `status == "unavailable"`.
+**Quota thresholds:**
+
+- `quota_pct == -1` → unknown, treat as available
+- `quota_pct >= 20` → available, dispatch normally
+- `0 < quota_pct < 20` → warn Opus advisor before dispatching (QUOTA_LOW)
+- `quota_pct == 0` → exhausted, skip tool entirely
+
+```bash
+# Check for low-quota tools before choosing (example for codex-spark)
+SPARK_Q=$(jq '.["codex-spark"].quota_pct' .beacon/quota.json 2>/dev/null || echo 100)
+if (( SPARK_Q == 0 )); then
+  # Skip codex-spark, try next tool
+  :
+elif (( SPARK_Q < 20 && SPARK_Q != -1 )); then
+  # Log warning but proceed — operator can override
+  echo "QUOTA_LOW codex-spark (${SPARK_Q}%)" >> .beacon/poll.log
+fi
+```
 
 ---
 
@@ -145,10 +162,14 @@ tmux send-keys -t $PANE_ID "codex -p \"$(cat BEACON_PROMPT.md)\" --auto-edit && 
 tmux send-keys -t $PANE_ID "gemini -p \"$(cat BEACON_PROMPT.md)\" && echo COMPLETE || echo STUCK" Enter
 ```
 
-Update state:
+Update state and decrement quota:
 
 ```bash
 bash hooks/update-state.sh set-running <issue-id> agent=codex-spark pane_id=$PANE_ID
+# Decrement estimated quota for the tool actually dispatched (use actual tool name)
+bash hooks/quota-update.sh decrement codex-spark <complexity>   # simple | medium | complex
+# bash hooks/quota-update.sh decrement codex-gpt <complexity>   # if GPT model used
+# bash hooks/quota-update.sh decrement gemini <complexity>      # if Gemini dispatched
 ```
 
 **Completion detection for third-party agents:**

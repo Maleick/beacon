@@ -2,6 +2,8 @@
 set -euo pipefail
 
 # detect-tools.sh — Detect available AI CLI tools and output JSON report.
+
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || REPO_ROOT="$(pwd)"
 # Outputs quota_pct for each tool: 100 if known-full, -1 if unknown, 0-100 if parseable.
 # Always exits 0; missing tools are reported as unavailable, not errors.
 
@@ -9,27 +11,32 @@ set -euo pipefail
 # Quota helpers — return integer 0-100 or -1 (unknown)
 # ---------------------------------------------------------------------------
 
+QUOTA_FILE="${REPO_ROOT}/.beacon/quota.json"
+
 # Claude uses a Max subscription — treat as always full.
 quota_claude() {
   echo "100"
 }
 
-# Codex CLI: no public quota/status command as of 2025. Default to -1.
-# If a future `codex quota --model spark` or similar command exists, parse it here.
-quota_codex_spark() {
-  # Attempt: codex features may expose quota info in the future.
-  # For now there is no machine-readable quota output — return unknown.
-  echo "-1"
+# Read quota from quota.json if it exists; fall back to 100 (optimistic default).
+# Returns -1 only if the tool is unavailable (not installed).
+_read_quota() {
+  local tool="$1"
+  if [[ -f "$QUOTA_FILE" ]]; then
+    local q
+    q=$(jq -r --arg t "$tool" '.[$t].quota_pct // -1' "$QUOTA_FILE" 2>/dev/null)
+    echo "${q:--1}"
+  else
+    echo "100"  # No quota file yet → assume fresh/full
+  fi
 }
 
-quota_codex_gpt() {
-  echo "-1"
-}
+# Codex: no public quota API — use decay-estimated value from quota.json.
+quota_codex_spark() { _read_quota "codex-spark"; }
+quota_codex_gpt()   { _read_quota "codex-gpt";   }
 
-# Gemini CLI: no --quota or status subcommand as of 2025. Default to -1.
-quota_gemini() {
-  echo "-1"
-}
+# Gemini: no quota API — use decay-estimated value from quota.json.
+quota_gemini() { _read_quota "gemini"; }
 
 # ---------------------------------------------------------------------------
 # Per-tool detection

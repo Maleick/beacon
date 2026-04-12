@@ -85,6 +85,7 @@ When ambiguous, classify **up** (prefer medium over simple, complex over medium)
 ### 4b. Check Dependencies
 
 Scan the issue body for:
+
 - Explicit: `blocks: #N`, `depends-on: #N`, `blocked by #N`, `after #N`
 - Implicit: references to the same files or components as in-flight issues
 
@@ -169,10 +170,12 @@ For each changed issue (label changes or body updates):
 ### Label Reconciliation
 
 If a `beacon:*` label was **added** externally:
+
 - `beacon:blocked` → update local state to `blocked`
 - `beacon:in-progress` → log discrepancy (we should already know about it)
 
 If a `beacon:*` label was **removed** externally:
+
 - `beacon:in-progress` removed → treat as cancellation signal, proceed as Step 5
 
 ### Metadata Update
@@ -189,7 +192,17 @@ jq --arg num "<number>" \
   .beacon/state.json > .beacon/state.tmp && mv .beacon/state.tmp .beacon/state.json
 ```
 
-## Step 7: Update Poll Timestamp and Write Log
+## Step 7: Refresh Quota Estimates
+
+Run the daily refresh check — this auto-resets any tool whose quota crossed midnight (subscription tools renew daily):
+
+```bash
+bash hooks/quota-update.sh refresh
+```
+
+This is a no-op if all tools were already reset today. No API calls made.
+
+## Step 8: Update Poll Timestamp and Write Log
 
 Update `updated_at` and `last_poll` in state:
 

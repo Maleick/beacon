@@ -1,0 +1,191 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# quota-update.sh — Manage per-tool quota estimates via decay model.
+#
+# Since third-party CLIs (Codex, Gemini) expose no machine-readable quota API,
+# we track estimated usage: start at 100%, subtract a complexity-weighted cost
+# per dispatch, and auto-reset daily (subscription tools renew each day).
+#
+# Usage:
+#   quota-update.sh init                          # Create quota.json, all tools at 100
+#   quota-update.sh decrement <tool> <complexity> # Subtract cost estimate
+#   quota-update.sh set <tool> <value>            # Manually set a quota value (0-100)
+#   quota-update.sh reset [tool]                  # Reset one tool or all to 100
+#   quota-update.sh check                         # Print JSON of current quotas
+#   quota-update.sh refresh                       # Auto-reset tools that crossed midnight
+
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
+  echo "Error: not inside a git repository" >&2
+  exit 1
+}
+
+QUOTA_FILE="$REPO_ROOT/.beacon/quota.json"
+
+# ---------------------------------------------------------------------------
+# Cost estimates by complexity (percentage points subtracted per dispatch)
+# ---------------------------------------------------------------------------
+cost_for_complexity() {
+  case "$1" in
+    simple)  echo "3"  ;;
+    medium)  echo "8"  ;;
+    complex) echo "15" ;;
+    *)       echo "5"  ;;  # default: medium-light
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# Ensure quota.json exists with defaults
+# ---------------------------------------------------------------------------
+ensure_init() {
+  if [[ ! -f "$QUOTA_FILE" ]]; then
+    mkdir -p "$(dirname "$QUOTA_FILE")"
+    cat > "$QUOTA_FILE" << 'EOF'
+{
+  "codex-spark": {"quota_pct": 100, "dispatches": 0, "reset_date": ""},
+  "codex-gpt":   {"quota_pct": 100, "dispatches": 0, "reset_date": ""},
+  "gemini":      {"quota_pct": 100, "dispatches": 0, "reset_date": ""}
+}
+EOF
+    # Stamp today's date on all entries
+    TODAY=$(date -u +"%Y-%m-%d")
+    TMP=$(mktemp)
+    jq --arg d "$TODAY" '
+      to_entries | map(.value.reset_date = $d) | from_entries
+    ' "$QUOTA_FILE" > "$TMP" && mv "$TMP" "$QUOTA_FILE"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Commands
+# ---------------------------------------------------------------------------
+
+cmd_init() {
+  rm -f "$QUOTA_FILE"
+  ensure_init
+  echo "Quota initialized: all tools at 100%"
+}
+
+cmd_decrement() {
+  local tool="${1:-}"
+  local complexity="${2:-medium}"
+  if [[ -z "$tool" ]]; then
+    echo "Usage: $0 decrement <tool> <complexity>" >&2
+    exit 1
+  fi
+  ensure_init
+  local cost
+  cost=$(cost_for_complexity "$complexity")
+
+  # Check tool exists in quota file
+  if ! jq -e --arg t "$tool" '.[$t]' "$QUOTA_FILE" >/dev/null 2>&1; then
+    echo "Warning: unknown tool '$tool', skipping quota decrement" >&2
+    return 0
+  fi
+
+  TMP=$(mktemp)
+  jq --arg tool "$tool" --argjson cost "$cost" '
+    .[$tool].quota_pct = ([.[$tool].quota_pct - $cost, 0] | max) |
+    .[$tool].dispatches += 1
+  ' "$QUOTA_FILE" > "$TMP" && mv "$TMP" "$QUOTA_FILE"
+
+  local new_pct
+  new_pct=$(jq -r --arg t "$tool" '.[$t].quota_pct' "$QUOTA_FILE")
+  echo "Decremented $tool by ${cost}% → ${new_pct}% remaining"
+
+  # Emit warning if below thresholds
+  if (( new_pct <= 0 )); then
+    echo "QUOTA_EXHAUSTED $tool" >&2
+  elif (( new_pct <= 20 )); then
+    echo "QUOTA_LOW $tool (${new_pct}%)" >&2
+  fi
+}
+
+cmd_set() {
+  local tool="${1:-}"
+  local value="${2:-}"
+  if [[ -z "$tool" || -z "$value" ]]; then
+    echo "Usage: $0 set <tool> <0-100>" >&2
+    exit 1
+  fi
+  ensure_init
+  TMP=$(mktemp)
+  jq --arg tool "$tool" --argjson val "$value" '
+    .[$tool].quota_pct = ([[$val, 0] | max, 100] | min)
+  ' "$QUOTA_FILE" > "$TMP" && mv "$TMP" "$QUOTA_FILE"
+  echo "Set $tool quota to ${value}%"
+}
+
+cmd_reset() {
+  local tool="${1:-}"
+  ensure_init
+  TODAY=$(date -u +"%Y-%m-%d")
+  TMP=$(mktemp)
+  if [[ -n "$tool" ]]; then
+    jq --arg t "$tool" --arg d "$TODAY" '
+      .[$t].quota_pct = 100 | .[$t].dispatches = 0 | .[$t].reset_date = $d
+    ' "$QUOTA_FILE" > "$TMP" && mv "$TMP" "$QUOTA_FILE"
+    echo "Reset $tool quota to 100%"
+  else
+    jq --arg d "$TODAY" '
+      to_entries | map(
+        .value.quota_pct = 100 | .value.dispatches = 0 | .value.reset_date = $d
+      ) | from_entries
+    ' "$QUOTA_FILE" > "$TMP" && mv "$TMP" "$QUOTA_FILE"
+    echo "Reset all tool quotas to 100%"
+  fi
+}
+
+cmd_check() {
+  ensure_init
+  jq '.' "$QUOTA_FILE"
+}
+
+cmd_refresh() {
+  # Auto-reset any tool whose reset_date is before today (crossed midnight).
+  # Subscription tools (Codex Plus, Gemini Advanced) renew daily.
+  ensure_init
+  TODAY=$(date -u +"%Y-%m-%d")
+  TMP=$(mktemp)
+  local reset_count=0
+
+  # Check each tool and reset if stale
+  while IFS= read -r tool; do
+    local reset_date
+    reset_date=$(jq -r --arg t "$tool" '.[$t].reset_date // ""' "$QUOTA_FILE")
+    if [[ "$reset_date" < "$TODAY" ]]; then
+      jq --arg t "$tool" --arg d "$TODAY" '
+        .[$t].quota_pct = 100 | .[$t].dispatches = 0 | .[$t].reset_date = $d
+      ' "$QUOTA_FILE" > "$TMP" && mv "$TMP" "$QUOTA_FILE" && cp "$QUOTA_FILE" "$TMP"
+      echo "Auto-reset $tool (was $reset_date → $TODAY)"
+      (( reset_count++ )) || true
+    fi
+  done < <(jq -r 'keys[]' "$QUOTA_FILE")
+
+  if (( reset_count == 0 )); then
+    echo "No tools needed refresh (all current as of $TODAY)"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+if [[ $# -lt 1 ]]; then
+  echo "Usage: $0 <init|decrement|set|reset|check|refresh> [args...]" >&2
+  exit 1
+fi
+
+case "$1" in
+  init)       cmd_init ;;
+  decrement)  shift; cmd_decrement "$@" ;;
+  set)        shift; cmd_set "$@" ;;
+  reset)      shift; cmd_reset "$@" ;;
+  check)      cmd_check ;;
+  refresh)    cmd_refresh ;;
+  *)
+    echo "Error: unknown command '$1'" >&2
+    echo "Valid: init, decrement, set, reset, check, refresh" >&2
+    exit 1
+    ;;
+esac
