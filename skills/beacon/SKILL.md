@@ -400,12 +400,15 @@ Haiku writes, Sonnet reads. Initialize as `[]` if missing.
 
 ### Context Compaction
 
-After compaction, immediately:
+If you sense your context has been compacted (you cannot recall recent events, agents, or dispatch decisions), **immediately stop and recover before processing any events**:
 
-1. Re-read `.beacon/state.json`
-2. Re-read `.beacon/event-queue.json`
-3. Restart 3 Monitor processes
-4. Resume processing queue
+1. Run `cat .beacon/state.json` to reload full current state
+2. Run `cat .beacon/event-queue.json` to see all pending events
+3. Run `tmux list-panes -t beacon -F '#{pane_id} #{pane_title} #{pane_dead}'` to identify alive agents
+4. Restart the 3 Monitor processes (Step 6 of Startup Sequence) — they may have lost their watchers
+5. Resume from current state — **do not restart agents that are still running**, **do not re-run UltraPlan**
+
+Signs of compaction: you cannot name the current phase, you don't recall which agents are running, or you see Monitor events referring to issues you have no memory of dispatching.
 
 ### Tmux Session Death
 

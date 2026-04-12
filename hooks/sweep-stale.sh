@@ -42,15 +42,27 @@ fi
 # approved: work was completed and approved
 TERMINAL_STATES="merged blocked approved"
 
+# --- Error Recovery #3: Stale worktree detection ---
+# Also remove worktrees for issues that have no active tmux pane AND are not
+# in a running state in state.json. These are orphaned from crashed sessions.
+is_pane_active() {
+  local pane_id="$1"
+  [[ -z "$pane_id" ]] && return 1
+  command -v tmux >/dev/null 2>&1 || return 1
+  tmux list-panes -a -F '#{pane_id}' 2>/dev/null | grep -q "^${pane_id}$"
+}
+
+LOG_FILE=".beacon/poll.log"
+
 # Iterate over worktree directories
 CLEANED_COUNT=0
 for worktree_dir in "$WORKSPACES_DIR"/*/; do
   # Extract issue key from directory name (e.g., ".beacon/workspaces/issue-16" → "issue-16")
   ISSUE_KEY=$(basename "$worktree_dir")
-  
+
   # Look up the issue state in state.json
   ISSUE_STATE=$(jq -r --arg id "$ISSUE_KEY" '.issues[$id].state // "unknown"' "$STATE_FILE" 2>/dev/null) || ISSUE_STATE="unknown"
-  
+
   # Check if this issue is in a terminal state
   IS_TERMINAL=0
   for state in $TERMINAL_STATES; do
@@ -59,16 +71,32 @@ for worktree_dir in "$WORKSPACES_DIR"/*/; do
       break
     fi
   done
-  
+
   if [[ $IS_TERMINAL -eq 1 ]]; then
     echo "Stale worktree detected: $ISSUE_KEY (state: $ISSUE_STATE)"
-    
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] sweep-stale: removing terminal worktree $ISSUE_KEY (state=$ISSUE_STATE)" >> "$LOG_FILE" 2>/dev/null || true
+
     # Call cleanup-worktree.sh to handle the cleanup
     bash "$SCRIPT_DIR/cleanup-worktree.sh" "$ISSUE_KEY" 2>/dev/null || {
       echo "Warning: failed to clean up $ISSUE_KEY"
     }
-    
+
     CLEANED_COUNT=$((CLEANED_COUNT + 1))
+    continue
+  fi
+
+  # Also sweep orphaned worktrees: directory exists but issue is NOT running and pane is dead
+  if [[ "$ISSUE_STATE" != "running" ]]; then
+    PANE_ID=$(jq -r --arg id "$ISSUE_KEY" '.issues[$id].pane_id // empty' "$STATE_FILE" 2>/dev/null) || PANE_ID=""
+    if ! is_pane_active "$PANE_ID"; then
+      echo "Orphaned worktree detected: $ISSUE_KEY (state=$ISSUE_STATE, no active pane)"
+      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] sweep-stale: removing orphaned worktree $ISSUE_KEY (state=$ISSUE_STATE, pane_id=${PANE_ID:-none})" >> "$LOG_FILE" 2>/dev/null || true
+
+      bash "$SCRIPT_DIR/cleanup-worktree.sh" "$ISSUE_KEY" 2>/dev/null || {
+        echo "Warning: failed to clean up orphaned worktree $ISSUE_KEY"
+      }
+      CLEANED_COUNT=$((CLEANED_COUNT + 1))
+    fi
   fi
 done
 

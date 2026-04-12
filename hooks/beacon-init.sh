@@ -60,6 +60,16 @@ if [[ ! -f "$BEACON_DIR/quota.json" ]]; then
   bash "$SCRIPT_DIR/quota-update.sh" init 2>/dev/null || true
 fi
 
+# --- Error Recovery #6: Invalid/corrupted state file ---
+# If state.json exists but is not valid JSON, back it up and reinitialize.
+if [[ -f "$STATE_FILE" ]]; then
+  if ! jq '.' "$STATE_FILE" > /dev/null 2>&1; then
+    BACKUP="${STATE_FILE}.corrupted.$(date +%s)"
+    mv "$STATE_FILE" "$BACKUP"
+    echo "State file corrupted — backed up to $BACKUP, initializing fresh" >&2
+  fi
+fi
+
 # Initialize state.json only if it doesn't exist
 if [[ ! -f "$STATE_FILE" ]]; then
   NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -130,6 +140,87 @@ create_github_labels() {
 
 # Attempt to create labels (non-fatal if it fails)
 create_github_labels || true
+
+# --- Error Recovery #1: Session Restart Reconciliation ---
+# If state.json shows issues as running/claimed but the tmux pane is gone,
+# reconcile against GitHub labels to decide whether to keep or reset each issue.
+reconcile_stale_running() {
+  if ! command -v jq >/dev/null 2>&1; then
+    return 0
+  fi
+  if [[ ! -f "$STATE_FILE" ]]; then
+    return 0
+  fi
+
+  # Collect issue keys that are in running or claimed state
+  local stale_keys
+  stale_keys=$(jq -r '.issues | to_entries[] | select(.value.state == "running" or .value.state == "claimed") | .key' "$STATE_FILE" 2>/dev/null) || return 0
+
+  if [[ -z "$stale_keys" ]]; then
+    return 0
+  fi
+
+  echo "Reconciling stale running/claimed issues..."
+
+  while IFS= read -r key; do
+    [[ -z "$key" ]] && continue
+
+    # Check if the tmux pane for this issue is still alive
+    local pane_id
+    pane_id=$(jq -r --arg k "$key" '.issues[$k].pane_id // empty' "$STATE_FILE" 2>/dev/null) || pane_id=""
+
+    local pane_alive=0
+    if [[ -n "$pane_id" ]] && command -v tmux >/dev/null 2>&1; then
+      if tmux list-panes -a -F '#{pane_id}' 2>/dev/null | grep -q "^${pane_id}$"; then
+        pane_alive=1
+      fi
+    fi
+
+    if [[ $pane_alive -eq 1 ]]; then
+      echo "  $key: pane $pane_id still alive — keeping as running"
+      continue
+    fi
+
+    # Pane is gone. Check GitHub labels as source of truth (if gh available).
+    local has_inprogress_label=0
+    if [[ -n "$REPO_SLUG" ]] && command -v gh >/dev/null 2>&1; then
+      # Extract numeric issue ID from key (e.g. "issue-42" → 42)
+      local issue_num="${key#issue-}"
+      if gh issue view "$issue_num" --repo "$REPO_SLUG" --json labels \
+          --jq '.labels[].name' 2>/dev/null | grep -q "^beacon:in-progress$"; then
+        has_inprogress_label=1
+      fi
+    fi
+
+    # Check worktree directory
+    local worktree_path="$WORKSPACES_DIR/$key"
+    local worktree_exists=0
+    [[ -d "$worktree_path" ]] && worktree_exists=1
+
+    if [[ $has_inprogress_label -eq 1 ]]; then
+      # Agent may be running in a different session — preserve state but clear dead pane ref
+      echo "  $key: beacon:in-progress label present — preserving running state, clearing pane_id"
+      jq --arg k "$key" '.issues[$k].pane_id = null' "$STATE_FILE" > "${STATE_FILE}.tmp" \
+        && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+    else
+      # No label, no pane → reset to unclaimed
+      echo "  $key: no active pane or in-progress label — resetting to unclaimed"
+      if [[ $worktree_exists -eq 1 ]]; then
+        # Keep worktree/assignment, just reset state
+        jq --arg k "$key" \
+          '.issues[$k].state = "unclaimed" | .issues[$k].pane_id = null' \
+          "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+      else
+        # Clear everything
+        jq --arg k "$key" \
+          '.issues[$k].state = "unclaimed" | .issues[$k].pane_id = null | .issues[$k].worktree = null | .issues[$k].agent = null' \
+          "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+      fi
+    fi
+  done <<< "$stale_keys"
+}
+
+reconcile_stale_running || true
 
 # Sweep stale worktrees on startup (non-fatal if it fails)
 echo "Scanning for stale worktrees..."

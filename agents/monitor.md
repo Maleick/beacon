@@ -76,16 +76,42 @@ For each actionable comment, report:
 
 ### 3. Conflict Resolution
 
+**Error Recovery #7: Concurrent PR merge conflicts**
+
 ```bash
-gh pr view <NUMBER> --json mergeable
+gh pr view <NUMBER> --json mergeable,mergeStateStatus,headRefName,baseRefName,number
 ```
 
-If `mergeable` is `CONFLICTING`:
+If `mergeable` is `CONFLICTING` or `mergeStateStatus` is `CONFLICTING`:
 
-- Check if the conflict is with another Beacon PR vs. an external merge.
-- Report to Opus with: conflicting files list, source branch, target branch.
-- **Do NOT attempt to rebase or resolve conflicts.** Opus decides whether to re-dispatch the agent or rebase.
-- Suggestion heuristic: if conflicts are in < 3 files → suggest rebase. If >= 3 files → suggest re-dispatch.
+1. Fetch conflicting file details:
+
+   ```bash
+   gh pr view <NUMBER> --json files --jq '[.files[].path]'
+   ```
+
+2. Determine conflict source (check if another Beacon PR merged recently):
+
+   ```bash
+   gh pr list --label beacon --state merged --json number,mergedAt,files \
+     --jq '[.[] | select(.mergedAt > "LAST_CHECK_TIMESTAMP")]'
+   ```
+
+3. Write an event to the queue so the orchestrator can act:
+
+   ```bash
+   EVENT_QUEUE=".beacon/event-queue.json"
+   [[ ! -f "$EVENT_QUEUE" ]] && echo '[]' > "$EVENT_QUEUE"
+   issue_num=$(jq -r --arg branch "<head-ref-name>" '.issues | to_entries[] | select(.value.worktree | test($branch)) | .key | ltrimstr("issue-")' .beacon/state.json 2>/dev/null || echo "0")
+   CONFLICT_EVENT="{\"type\": \"pr_conflict\", \"issue\": $issue_num, \"pr\": <NUMBER>, \"conflict_file_count\": <COUNT>, \"priority\": 1}"
+   jq --argjson evt "$CONFLICT_EVENT" '. + [$evt]' "$EVENT_QUEUE" > "${EVENT_QUEUE}.tmp" \
+     && mv "${EVENT_QUEUE}.tmp" "$EVENT_QUEUE"
+   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] pr_conflict queued for PR #<NUMBER> issue=$issue_num" >> .beacon/poll.log
+   ```
+
+4. Include in your output block: conflicting files list, source branch, target branch, whether conflict is with another Beacon PR or external.
+5. **Do NOT attempt to rebase or resolve conflicts.** The orchestrator spawns Opus to decide.
+6. Suggestion heuristic (include in `ACTION_NEEDED`): if conflicts are in < 3 files → suggest rebase. If >= 3 files → suggest re-dispatch.
 
 ### 4. Merge Decision Tree
 

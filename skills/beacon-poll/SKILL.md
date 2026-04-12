@@ -20,8 +20,40 @@ Also note the `repo` field — you'll need it for `gh` calls.
 
 ## Step 2: Fetch Live Issues from GitHub
 
+**Error Recovery #5: GitHub API errors** — all `gh` calls in this step must be wrapped with failure handling. Read the consecutive failure counter before fetching:
+
 ```bash
-gh issue list --state open --json number,title,body,labels,updatedAt --limit 200
+# Read current consecutive failure count (default 0 if not set)
+api_failures=$(jq -r '.consecutive_api_failures // 0' .beacon/state.json 2>/dev/null) || api_failures=0
+```
+
+Fetch open issues:
+
+```bash
+if live_issues=$(gh issue list --state open --json number,title,body,labels,updatedAt --limit 200 2>/tmp/gh_error); then
+  # Reset failure counter on success
+  jq '.consecutive_api_failures = 0' .beacon/state.json > .beacon/state.tmp && mv .beacon/state.tmp .beacon/state.json
+else
+  api_failures=$((api_failures + 1))
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] GitHub API error (attempt $api_failures): $(cat /tmp/gh_error)" >> .beacon/poll.log
+  echo "GitHub API error, will retry on next poll" >&2
+
+  # Update consecutive failure counter in state
+  jq --argjson n "$api_failures" '.consecutive_api_failures = $n' .beacon/state.json \
+    > .beacon/state.tmp && mv .beacon/state.tmp .beacon/state.json
+
+  # After 3 consecutive failures, write urgent event to queue
+  if [[ "$api_failures" -ge 3 ]]; then
+    EVENT_QUEUE=".beacon/event-queue.json"
+    [[ ! -f "$EVENT_QUEUE" ]] && echo '[]' > "$EVENT_QUEUE"
+    jq '. + [{"type": "github_api_down", "consecutive_failures": '"$api_failures"', "priority": 1}]' \
+      "$EVENT_QUEUE" > "${EVENT_QUEUE}.tmp" && mv "${EVENT_QUEUE}.tmp" "$EVENT_QUEUE"
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] github_api_down event queued after $api_failures consecutive failures" >> .beacon/poll.log
+  fi
+
+  # Skip the rest of this poll cycle — do not crash
+  exit 0
+fi
 ```
 
 This returns all currently **open** issues. Store the result as `live_issues`.
@@ -29,8 +61,11 @@ This returns all currently **open** issues. Store the result as `live_issues`.
 Also fetch recently closed issues (closed in the past 30 minutes) to catch external closures:
 
 ```bash
-gh issue list --state closed --json number,title,labels,updatedAt --limit 50 \
-  | jq '[.[] | select(.updatedAt > (now - 1800 | todate))]'
+if ! closed_issues=$(gh issue list --state closed --json number,title,labels,updatedAt --limit 50 \
+    | jq '[.[] | select(.updatedAt > (now - 1800 | todate))]' 2>/tmp/gh_error); then
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] GitHub API warning (closed issues fetch): $(cat /tmp/gh_error)" >> .beacon/poll.log
+  closed_issues='[]'  # Non-fatal — continue with empty closed list
+fi
 ```
 
 ## Step 3: Diff Against Known State

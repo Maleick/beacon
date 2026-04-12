@@ -13,7 +13,7 @@ REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
 cd "$REPO_ROOT"
 
 # Also check pane_dead as a fallback for third-party agents that don't emit
-# status words (crash detection).
+# status words (crash detection). — Error Recovery #4: Tool crash mid-dispatch
 check_dead_panes() {
   if ! command -v tmux >/dev/null 2>&1; then
     return
@@ -27,7 +27,27 @@ check_dead_panes() {
           if [[ -f "$WORKSPACE_DIR/$key/BEACON_RESULT.md" ]]; then
             echo "[AGENT_DONE_FALLBACK] key=$key pane=$pane_id"
           else
+            # Crash: no result file. Mark as failed and queue for re-dispatch.
             echo "[AGENT_CRASH] key=$key pane=$pane_id"
+
+            # Extract numeric issue ID (e.g. "issue-42" → "42")
+            issue_num="${key#issue-}"
+
+            # Update state to failed
+            bash hooks/update-state.sh set-failed "$issue_num" 2>/dev/null || true
+
+            # Write crash event to event queue (priority 1 = urgent)
+            EVENT_QUEUE="$BEACON_DIR/event-queue.json"
+            if [[ ! -f "$EVENT_QUEUE" ]]; then
+              echo '[]' > "$EVENT_QUEUE"
+            fi
+            CRASH_EVENT="{\"type\": \"agent_crashed\", \"issue\": $issue_num, \"pane\": \"$pane_id\", \"priority\": 1}"
+            jq --argjson evt "$CRASH_EVENT" '. + [$evt]' "$EVENT_QUEUE" > "${EVENT_QUEUE}.tmp" \
+              && mv "${EVENT_QUEUE}.tmp" "$EVENT_QUEUE" 2>/dev/null || true
+
+            # Log to poll.log
+            echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] monitor-agents: CRASH detected key=$key pane=$pane_id — marked failed, queued agent_crashed" \
+              >> "$BEACON_DIR/poll.log" 2>/dev/null || true
           fi
         fi
       fi
