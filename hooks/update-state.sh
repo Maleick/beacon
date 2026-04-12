@@ -3,7 +3,7 @@ set -euo pipefail
 
 # update-state.sh — Update .beacon/state.json for a given issue.
 # Usage: update-state.sh <action> <issue-id> [key=value ...]
-# Actions: set-claimed, set-running, set-verifying, set-completed, set-blocked, set-merged, set-failed
+# Actions: set-claimed, set-running, set-verifying, set-completed, set-blocked, set-merged, set-failed, set-paused
 
 BEACON_DIR=".beacon"
 STATE_FILE="$BEACON_DIR/state.json"
@@ -27,9 +27,45 @@ fi
 
 if [[ $# -lt 2 ]]; then
   echo "Usage: $0 <action> <issue-id> [key=value ...]" >&2
-  echo "Actions: set-claimed, set-running, set-verifying, set-completed, set-blocked, set-merged, set-failed" >&2
+  echo "Actions: set-claimed, set-running, set-verifying, set-completed, set-blocked, set-merged, set-failed, set-paused" >&2
   exit 1
 fi
+
+# Helper function to manage GitHub labels (bash 3.2 compatible)
+# Usage: manage_labels <issue-id> <add-label> [remove-label1] [remove-label2] ...
+manage_labels() {
+  local issue_id="$1"
+  local add_label="$2"
+  shift 2
+  local remove_labels=("$@")
+
+  # Check if gh is available and repo info exists
+  if ! command -v gh >/dev/null 2>&1; then
+    return 0
+  fi
+
+  # Get repo slug from state.json
+  local repo_slug
+  repo_slug=$(jq -r '.repo // empty' "$STATE_FILE") || return 0
+  if [[ -z "$repo_slug" ]]; then
+    return 0
+  fi
+
+  # Remove old labels first
+  for old_label in "${remove_labels[@]}"; do
+    # Verify the label exists before trying to remove it
+    if gh label list --repo "$repo_slug" --json name --jq ".[].name" 2>/dev/null | grep -q "^${old_label}$"; then
+      gh issue edit "$issue_id" --repo "$repo_slug" --remove-label "$old_label" 2>/dev/null || true
+    fi
+  done
+
+  # Add new label (if not already present)
+  if [[ -n "$add_label" ]]; then
+    if gh label list --repo "$repo_slug" --json name --jq ".[].name" 2>/dev/null | grep -q "^${add_label}$"; then
+      gh issue edit "$issue_id" --repo "$repo_slug" --add-label "$add_label" 2>/dev/null || true
+    fi
+  fi
+}
 
 ACTION="$1"
 ISSUE_ID="$2"
@@ -44,39 +80,59 @@ trap cleanup EXIT
 
 make_tmp() { local t; t=$(mktemp); TMP_FILES+=("$t"); echo "$t"; }
 
-# Map action to state and stat counter
+# Map action to state, stat counter, and GitHub labels
 case "$ACTION" in
   set-claimed)
     NEW_STATE="claimed"
     STAT_KEY=""
+    ADD_LABEL=""
+    REMOVE_LABELS=()
     ;;
   set-running)
     NEW_STATE="running"
     STAT_KEY="dispatched"
+    ADD_LABEL="beacon:in-progress"
+    REMOVE_LABELS=("beacon:blocked" "beacon:paused" "beacon:done")
     ;;
   set-verifying)
     NEW_STATE="verifying"
     STAT_KEY=""
+    ADD_LABEL=""
+    REMOVE_LABELS=()
     ;;
   set-completed)
     NEW_STATE="approved"
     STAT_KEY="completed"
+    ADD_LABEL=""
+    REMOVE_LABELS=()
     ;;
   set-blocked)
     NEW_STATE="blocked"
     STAT_KEY="blocked"
+    ADD_LABEL="beacon:blocked"
+    REMOVE_LABELS=("beacon:in-progress" "beacon:paused" "beacon:done")
     ;;
   set-merged)
     NEW_STATE="merged"
     STAT_KEY="completed"
+    ADD_LABEL="beacon:done"
+    REMOVE_LABELS=("beacon:in-progress" "beacon:blocked" "beacon:paused")
+    ;;
+  set-paused)
+    NEW_STATE="paused"
+    STAT_KEY=""
+    ADD_LABEL="beacon:paused"
+    REMOVE_LABELS=()
     ;;
   set-failed)
     NEW_STATE="blocked"
     STAT_KEY="failed"
+    ADD_LABEL="beacon:blocked"
+    REMOVE_LABELS=("beacon:in-progress" "beacon:paused" "beacon:done")
     ;;
   *)
     echo "Error: unknown action '$ACTION'" >&2
-    echo "Valid actions: set-claimed, set-running, set-verifying, set-completed, set-blocked, set-merged, set-failed" >&2
+    echo "Valid actions: set-claimed, set-running, set-verifying, set-completed, set-blocked, set-merged, set-failed, set-paused" >&2
     exit 1
     ;;
 esac
@@ -103,6 +159,11 @@ if [[ -n "$STAT_KEY" ]]; then
   jq --arg key "$STAT_KEY" \
     '.stats[$key] += 1' \
     "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+fi
+
+# Manage GitHub labels for lifecycle transitions
+if [[ -n "$ADD_LABEL" ]] || [[ ${#REMOVE_LABELS[@]} -gt 0 ]]; then
+  manage_labels "$ISSUE_ID" "$ADD_LABEL" "${REMOVE_LABELS[@]}"
 fi
 
 # Apply optional key=value overrides
