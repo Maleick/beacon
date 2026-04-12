@@ -1,11 +1,5 @@
-# Beacon workspaces (git worktrees)
-.beacon/workspaces/
-
-# State file (local, rebuilt from GitHub)
-.beacon/state.json
-
-# Logs
-.beacon/logs/
+# Beacon runtime state (local, rebuilt from GitHub)
+.beacon/
 
 # OS
 .DS_Store

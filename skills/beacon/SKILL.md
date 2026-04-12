@@ -78,40 +78,119 @@ gh issue list --state open --json number,title,body,labels,milestone,createdAt,u
 
 ### Step 5: UltraPlan Analysis
 
-Invoke UltraPlan to build the master execution plan:
+Invoke UltraPlan to build the master execution plan. This is the critical intelligence pass — take time to get it right.
 
-1. **Classify complexity** for each issue (simple/medium/complex)
-2. **Parse dependencies** from issue bodies (`blocks: #N`, `depends-on: #N`)
-3. **Build dependency graph** — topological sort
-4. **Assign tools** based on complexity and available quota:
-   - Simple → Claude Haiku (or Gemini/Codex if Claude rate-limited)
-   - Medium → Claude Sonnet (or Codex if quota available)
-   - Complex → Claude Sonnet + autoresearch
-5. **Plan dispatch phases** — group by dependency layers
-6. **Set checkpoints** — re-plan after each phase completes
-7. **Estimate concurrency** — dynamic based on issue count (soft cap 20, hard cap 50)
+#### 5a. Classify Complexity
+
+For each issue, assign **simple**, **medium**, or **complex** based on:
+
+| Signal            | Simple                             | Medium                        | Complex                              |
+| ----------------- | ---------------------------------- | ----------------------------- | ------------------------------------ |
+| Scope             | Single file, < 50 lines changed    | 2-5 files, < 200 lines        | 5+ files, architectural changes      |
+| Test coverage     | Existing tests cover the change    | Needs new test cases          | Needs new test infrastructure        |
+| Dependencies      | None                               | Touches shared utilities      | Cross-cutting concerns               |
+| Domain knowledge  | Obvious fix/feature                | Requires reading related code | Requires understanding system design |
+| Issue description | Clear steps to reproduce/implement | Partial spec, needs inference | Ambiguous, needs decomposition       |
+
+If an issue is ambiguous, classify UP one level (prefer medium over simple, complex over medium).
+
+#### 5b. Parse Dependencies
+
+Scan issue bodies and comments for dependency signals:
+
+- Explicit: `blocks: #N`, `depends-on: #N`, `blocked by #N`, `after #N`
+- Implicit: two issues touching the same files (detect via path mentions in issue body)
+- Milestone grouping: issues in the same milestone may have implicit ordering
+
+#### 5c. Build Dependency Graph
+
+Topological sort of all issues. If cycles detected, report to operator and ask which edge to break.
+
+#### 5d. Assign Tools
+
+Based on complexity + current quota (from Step 2):
+
+| Complexity | Primary                             | Fallback 1                 | Fallback 2                   |
+| ---------- | ----------------------------------- | -------------------------- | ---------------------------- |
+| Simple     | Claude Haiku                        | Gemini (if quota > 10%)    | Codex Spark (if quota > 10%) |
+| Medium     | Claude Sonnet                       | Codex GPT (if quota > 10%) | Gemini (if quota > 10%)      |
+| Complex    | Claude Sonnet + `/autoresearch:fix` | Codex GPT (if quota > 10%) | Re-slice into smaller issues |
+
+#### 5e. Plan Dispatch Phases
+
+Group issues into phases by dependency layers:
+
+- Phase 1: all issues with no unresolved dependencies
+- Phase 2: issues that depend only on Phase 1 completions
+- Continue until all issues are assigned to a phase
+
+#### 5f. Set Checkpoints
+
+After each phase completes, pause to:
+
+- Re-check quota across all tools
+- Re-run UltraPlan on remaining issues (priorities may have shifted)
+- Integrate any new issues discovered during the phase
+
+#### 5g. Estimate Concurrency
+
+- Count issues in current phase
+- Cap at soft limit (20) unless operator explicitly overrides
+- Hard cap at 50 (safety valve — never exceed)
+- Scale down dynamically when tools report quota exhaustion
 
 Display the plan and begin execution.
 
 ### Step 6: Start Orchestration Loop
 
-Use CronCreate to schedule the polling safety net:
+Use CronCreate to schedule the 10-minute polling safety net:
 
 ```
-Poll GitHub every 10 minutes for new/changed issues.
-On new issues: run UltraPlan to integrate into existing plan.
-On closed issues: cancel any running agents for those issues.
+CronCreate({
+  schedule: "*/10 * * * *",
+  prompt: "Beacon poll: run `gh issue list --state open --json number,title,labels,updatedAt --limit 200`. Diff against .beacon/state.json known issues. For new issues: classify complexity and integrate into the current UltraPlan. For issues closed externally: cancel any running agents (kill tmux pane, remove worktree). For issues with updated labels: reconcile state. Update .beacon/state.json with poll timestamp.",
+  description: "Beacon GitHub poll safety net"
+})
 ```
+
+This fires even if the Discord webhook is active — it catches anything the webhook misses (e.g., issues created via API, label changes, external closures).
 
 ### Step 7: Start Discord Listener
 
-If Discord channel is connected (--channels flag), listen for:
+If Discord channel is connected (via `--channels` flag or `/discord:configure`), monitor the configured channel for:
 
-- GitHub webhook notifications (issue created/updated)
-- Direct commands ("work on #42", "pause", "resume", "skip #15")
-- Status queries ("what's running?", "quota?")
+#### GitHub Webhook Events
+
+GitHub repo webhooks post embeds to the Discord channel. Parse these to detect:
+
+- **Issue opened**: Extract issue number from embed → fetch full issue via `gh issue view` → run UltraPlan classification → dispatch if no blockers
+- **Issue updated**: Re-fetch issue → check if acceptance criteria changed → update running agent if needed
+- **Issue closed**: Cancel running agent for this issue (kill pane, remove worktree, update state)
+- **PR merged**: Trigger cleanup pipeline for the associated issue
+
+#### Direct Commands
+
+Respond to messages in the channel:
+
+- `work on #42` → Immediately dispatch issue #42, bypassing phase ordering
+- `skip #15` → Add to exclusion list in `.beacon/state.json`, cancel if running
+- `pause` → Stop dispatching new agents, let running agents finish
+- `resume` → Resume dispatch loop from current phase
+- `status` → Post a status summary to the channel (invoke `beacon-status` skill)
+- `replan` → Re-run UltraPlan on all remaining issues
+
+#### Polling via Discord MCP
+
+Use the Discord MCP tools to read messages:
+
+```
+mcp__plugin_discord_discord__fetch_messages — check for new commands
+mcp__plugin_discord_discord__reply — post status updates and confirmations
+```
 
 ## Dispatch Protocol
+
+Invoke the `beacon-dispatch` skill for all agent dispatching. It handles worktree creation, prompt generation, and tool-specific launch.
 
 ### For Claude Agents (Sonnet/Haiku)
 
@@ -287,10 +366,36 @@ Claude is the backbone (Max subscription). Codex and Gemini are tactical ($20 su
 
 ## Recovery
 
-On session restart or after context compaction:
+### Session Restart
+
+When Beacon starts and finds an existing `.beacon/state.json`:
 
 1. Read `.beacon/state.json` for last known state
-2. Check tmux panes for any still-running agents
-3. Poll GitHub for current issue/PR state
-4. Reconcile local state with GitHub labels
-5. Resume orchestration from last checkpoint
+2. Check tmux for surviving panes: `tmux list-panes -t beacon -F '#{pane_id} #{pane_title} #{pane_dead}'`
+3. For each pane still alive: agent is still running — update state to match
+4. For each pane dead: check worktree for `BEACON_RESULT.md` — if present, enter verification pipeline; if absent, mark for re-dispatch
+5. Poll GitHub for current issue/PR state: `gh issue list --state open --json number,labels` and `gh pr list --json number,state,mergedAt --label beacon`
+6. Reconcile local state with GitHub labels (labels are the source of truth for durable state)
+7. Resume orchestration from last checkpoint — do NOT re-run UltraPlan (plan is preserved in state file)
+
+### Context Compaction
+
+When the session hits the 80% compaction threshold:
+
+1. The state file on disk (`.beacon/state.json`) survives compaction — it is the anchor
+2. After compaction, immediately re-read `.beacon/state.json`
+3. Resume orchestration without re-running UltraPlan (the plan is in the state file)
+4. Re-establish CronCreate polling (cron jobs do not survive compaction)
+5. Re-check tmux panes for agent status
+
+### Power Loss / tmux Session Death
+
+If the tmux session dies, all agents die with it. On next start:
+
+1. Detect missing tmux session: `tmux has-session -t beacon 2>/dev/null` returns non-zero
+2. Rebuild state from GitHub labels + worktree existence:
+   - Issues with `beacon:in-progress` label but no running agent → mark for re-dispatch
+   - Issues with `beacon:done` label → verify PR was merged, clean up if so
+   - Issues with `beacon:blocked` label → preserve blocked state
+3. Clean up stale worktrees: any `.beacon/workspaces/*` directory with no corresponding running agent
+4. Create fresh tmux session and restart dispatch loop
