@@ -252,6 +252,38 @@ reconcile_stale_running() {
 
 reconcile_stale_running || true
 
+# --- Warning check: available-but-never-dispatched tools ---
+# If total dispatches >= 10 and a tool is marked available but has never been dispatched, warn
+check_available_never_dispatched() {
+  if ! command -v jq >/dev/null 2>&1; then
+    return 0
+  fi
+  if [[ ! -f "$STATE_FILE" ]]; then
+    return 0
+  fi
+
+  local total_dispatches
+  total_dispatches=$(jq -r '.stats.dispatched // 0' "$STATE_FILE" 2>/dev/null) || total_dispatches=0
+
+  # Only check if we've done 10+ dispatches
+  if (( total_dispatches < 10 )); then
+    return 0
+  fi
+
+  # Check each tool — warn if available but never dispatched
+  jq -r '.tools | to_entries[] | select(.value.status == "available") | .key' "$STATE_FILE" 2>/dev/null | while read -r tool; do
+    # Count how many issues were dispatched to this tool
+    local tool_dispatches
+    tool_dispatches=$(jq -r --arg t "$tool" '.issues | to_entries[] | select(.value.agent == $t) | length' "$STATE_FILE" 2>/dev/null | wc -l) || tool_dispatches=0
+
+    if (( tool_dispatches == 0 )); then
+      echo "WARN: $tool available but never dispatched (${total_dispatches} total dispatches) — check CLI" >> "$BEACON_DIR/poll.log"
+    fi
+  done
+}
+
+check_available_never_dispatched || true
+
 # Sweep stale worktrees on startup (non-fatal if it fails)
 echo "Scanning for stale worktrees..."
 bash "$SCRIPT_DIR/sweep-stale.sh" 2>/dev/null || true
