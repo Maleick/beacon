@@ -1,3 +1,14 @@
+## v1.4.3 — v1.4.3
+_2026-04-13_
+
+## What's Changed
+
+### Bug Fixes
+- **fix(commands):** correct stale skill name in `/autoship:start` — `autoship:orchestrate` → `autoship:beacon`, and add explicit `"Invoking AutoShip."` output message so the user sees a clean status line instead of the internal skill name
+
+### Chores
+- **chore:** gitignore `AGENTS.md` to keep AI agent instruction files out of the public repo
+
 ## v1.4.2 — v1.4.2
 _2026-04-13_
 
@@ -20,8 +31,6 @@ _2026-04-13_
 ## Upgrade
 
 No breaking changes. Drop-in replacement for v1.4.1.
-
----
 
 ## v1.4.1 — v1.4.1
 _2026-04-13_
@@ -49,8 +58,6 @@ No breaking changes. State files are backwards-compatible with v1.4.0.
 ```bash
 /install-plugin /path/to/AutoShip
 ```
-
----
 
 ## v1.4.0 — v1.4.0 — 9 Self-Improvement Issues
 _2026-04-13_
@@ -112,8 +119,6 @@ AutoShip shipped all 9 of its own self-improvement issues in a single session. Z
 
 No breaking changes. All state files are backwards-compatible.
 
----
-
 ## v1.3.0 — v1.3.0 — AutoShip Rebrand + 20-Agent Cap + Security Hardening
 _2026-04-13_
 
@@ -146,8 +151,6 @@ If upgrading from v1.2.x: re-run `/install-plugin` to pick up the renamed hooks 
 - 40+ files renamed/updated in the rebrand
 - 0 breaking API changes
 
----
-
 ## v1.2.1 — v1.2.1 — Bug fixes
 _2026-04-13_
 
@@ -167,8 +170,6 @@ _2026-04-13_
 ### Cosmetic
 
 - **`README.md`**: Quoted `/autoship:start` mermaid node label with `["..."]` syntax to fix "Unable to render rich display" error on GitHub.
-
----
 
 ## v1.2.0 — v1.2.0 — AutoShip rebrand + security hardening
 _2026-04-13_
@@ -211,8 +212,6 @@ This release rebrands the plugin from Beacon to **AutoShip** and ships a full se
 - ISSUE_ID format validation added to update-state.sh
 - AutoShip ran on itself to ship 3 issues in this release
 
----
-
 ## v1.1.0 — v1.1.0 — Symphony dispatch, routing matrix, token ledger
 _2026-04-13_
 
@@ -241,8 +240,6 @@ _2026-04-13_
 ```bash
 claude plugin update beacon
 ```
-
----
 
 ## v0.1 — v0.1 — Initial Release
 _2026-04-12_
@@ -282,6 +279,4 @@ First public release of Beacon — autonomous multi-agent GitHub issue orchestra
 | `/beacon status` | Show agents, quota, progress |
 | `/beacon stop` | Stop all agents |
 | `/beacon plan` | Analyze without dispatching |
-
----
 
