@@ -135,7 +135,7 @@ EVENT=$(jq -n \
   --arg ts      "$NOW" \
   '{type: $type, issue: $issue, issue_number: ($issueN | tonumber), tokens_used: $tok, timestamp: $ts}')
 
-touch "$EVENT_QUEUE"
+touch "$EVENT_QUEUE" "$EVENT_LOCK"
 flock "${EVENT_LOCK}" \
   jq --argjson evt "$EVENT" '. + [$evt]' "$EVENT_QUEUE" > "${EVENT_QUEUE}.tmp" \
   && mv "${EVENT_QUEUE}.tmp" "$EVENT_QUEUE"
