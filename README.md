@@ -7,9 +7,11 @@
   <a href="https://github.com/Maleick/AutoShip/commits/main"><img src="https://img.shields.io/github/last-commit/Maleick/AutoShip?style=flat" alt="Last Commit"></a>
   <a href="https://github.com/Maleick/AutoShip/releases"><img src="https://img.shields.io/github/v/release/Maleick/AutoShip?style=flat" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/Maleick/AutoShip?style=flat" alt="License"></a>
+  <a href="https://github.com/Maleick/AutoShip/security"><img src="https://img.shields.io/badge/security-hardened-green?style=flat" alt="Security"></a>
 </p>
 
 <p align="center">
+  <a href="https://github.com/Maleick/AutoShip/wiki">Docs</a> •
   <a href="#before--after">Before/After</a> •
   <a href="#install">Install</a> •
   <a href="#commands">Commands</a> •
@@ -105,23 +107,23 @@ Done. Start a new session and run `/autoship:start`.
 
 ### Optional agents (more dispatch power)
 
-| Tool | What it adds | Install |
-| --- | --- | --- |
-| `codex` | OpenAI-powered workers via JSON-RPC app-server (preferred for simple/medium) | [Codex CLI](https://github.com/openai/codex) |
-| `gemini` | Google-powered workers | [Gemini CLI](https://github.com/google-gemini/gemini-cli) |
-| `gh copilot` | GitHub Copilot workers | `gh extension install github/gh-copilot` |
-| Claude fallback | Always available — no install needed | built-in |
+| Tool            | What it adds                                                                 | Install                                                   |
+| --------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `codex`         | OpenAI-powered workers via JSON-RPC app-server (preferred for simple/medium) | [Codex CLI](https://github.com/openai/codex)              |
+| `gemini`        | Google-powered workers                                                       | [Gemini CLI](https://github.com/google-gemini/gemini-cli) |
+| `gh copilot`    | GitHub Copilot workers                                                       | `gh extension install github/gh-copilot`                  |
+| Claude fallback | Always available — no install needed                                         | built-in                                                  |
 
 AutoShip detects available tools at startup and routes work accordingly.
 
 ## Commands
 
-| Command | What it does |
-| --- | --- |
-| `/autoship:start` | Launch orchestration — classify issues, dispatch agents, loop until done |
-| `/autoship:plan` | Dry run — analyze issues and show dispatch plan without executing |
-| `/autoship:stop` | Gracefully stop all agents, save state, add `beacon:paused` labels |
-| `/autoship:status` | Live dashboard — active agents, quota bars, per-model token spend |
+| Command            | What it does                                                             |
+| ------------------ | ------------------------------------------------------------------------ |
+| `/autoship:start`  | Launch orchestration — classify issues, dispatch agents, loop until done |
+| `/autoship:plan`   | Dry run — analyze issues and show dispatch plan without executing        |
+| `/autoship:stop`   | Gracefully stop all agents, save state, add `beacon:paused` labels       |
+| `/autoship:status` | Live dashboard — active agents, quota bars, per-model token spend        |
 
 ## How It Works
 
@@ -157,15 +159,15 @@ Every agent writes `BEACON_RESULT.md` and emits `COMPLETE`, `BLOCKED`, or `STUCK
 
 Task type classification drives agent selection. Edit `BEACON.md` front matter to customize:
 
-| Task Type | Primary Agent | Fallback | Last Resort |
-| --- | --- | --- | --- |
-| `research` | Gemini | Claude Haiku | — |
-| `docs` | Gemini | Claude Haiku | — |
-| `simple_code` | Codex Spark | Gemini · Copilot | Claude Haiku |
-| `medium_code` | Codex GPT | Claude Sonnet | — |
-| `mechanical` | Claude Haiku | Gemini | Codex Spark |
-| `ci_fix` | Claude Haiku | Gemini | — |
-| `complex` | Claude Sonnet + Opus advisor | Claude Sonnet retry | Opus re-slice |
+| Task Type     | Primary Agent                | Fallback            | Last Resort   |
+| ------------- | ---------------------------- | ------------------- | ------------- |
+| `research`    | Gemini                       | Claude Haiku        | —             |
+| `docs`        | Gemini                       | Claude Haiku        | —             |
+| `simple_code` | Codex Spark                  | Gemini · Copilot    | Claude Haiku  |
+| `medium_code` | Codex GPT                    | Claude Sonnet       | —             |
+| `mechanical`  | Claude Haiku                 | Gemini              | Codex Spark   |
+| `ci_fix`      | Claude Haiku                 | Gemini              | —             |
+| `complex`     | Claude Sonnet + Opus advisor | Claude Sonnet retry | Opus re-slice |
 
 Quota thresholds gate dispatch: if a tool hits 0% estimated quota, it's skipped and the next in line picks up the work. Quotas are estimated via decay model and reset daily.
 
@@ -259,13 +261,13 @@ flowchart LR
     Workers -->|"BEACON_RESULT.md"| S
 ```
 
-| Tier | Role | Model |
-| --- | --- | --- |
-| Monitors | 3 bash scripts watching agents, PRs, issues | bash |
-| Triage | Interprets events, categorizes issues, queues actions | Claude Haiku |
-| Executor | Orchestration, dispatch, verification, PR pipeline | Claude Sonnet |
-| Advisor | Strategic decisions, UltraPlan, escalations | Claude Opus |
-| Workers | Actual code changes | Codex / Gemini / Claude |
+| Tier     | Role                                                  | Model                   |
+| -------- | ----------------------------------------------------- | ----------------------- |
+| Monitors | 3 bash scripts watching agents, PRs, issues           | bash                    |
+| Triage   | Interprets events, categorizes issues, queues actions | Claude Haiku            |
+| Executor | Orchestration, dispatch, verification, PR pipeline    | Claude Sonnet           |
+| Advisor  | Strategic decisions, UltraPlan, escalations           | Claude Opus             |
+| Workers  | Actual code changes                                   | Codex / Gemini / Claude |
 
 ### Plugin Structure
 
@@ -304,15 +306,15 @@ BEACON.md             ← routing matrix + quota config (YAML front matter, hot-
 
 Real dispatch results from AutoShip running on its own codebase:
 
-| Issue type | Agent dispatched | Time to merged PR | Notes |
-| --- | --- | --- | --- |
-| Simple bug fix | Codex Spark | ~4 min | JSON-RPC dispatch, no interaction |
-| Hook refactor | Claude Haiku | ~7 min | 2 files changed, tests pass |
-| Routing matrix feat | Claude Sonnet | ~18 min | BEACON.md + 3 hooks updated |
-| Token ledger schema | Claude Sonnet | ~12 min | New JSON schema + recording logic |
-| Emit-event refactor | Claude Haiku | ~5 min | 4 files deduplicated |
-| Archival bug fix | Claude Sonnet | ~9 min | Content validation added |
-| **Average** | — | **~9 min** | **issue open → PR merged** |
+| Issue type          | Agent dispatched | Time to merged PR | Notes                             |
+| ------------------- | ---------------- | ----------------- | --------------------------------- |
+| Simple bug fix      | Codex Spark      | ~4 min            | JSON-RPC dispatch, no interaction |
+| Hook refactor       | Claude Haiku     | ~7 min            | 2 files changed, tests pass       |
+| Routing matrix feat | Claude Sonnet    | ~18 min           | BEACON.md + 3 hooks updated       |
+| Token ledger schema | Claude Sonnet    | ~12 min           | New JSON schema + recording logic |
+| Emit-event refactor | Claude Haiku     | ~5 min            | 4 files deduplicated              |
+| Archival bug fix    | Claude Sonnet    | ~9 min            | Content validation added          |
+| **Average**         | —                | **~9 min**        | **issue open → PR merged**        |
 
 > AutoShip shipped all 7 v1.1.0 issues — open to merged PR — in a single session. Zero manual PRs. Zero manual merges.
 
