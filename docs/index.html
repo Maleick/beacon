@@ -255,7 +255,7 @@
     <div class="stat-label">parallel agents</div>
   </div>
   <div class="stat">
-    <span class="stat-num">7</span>
+    <span class="stat-num">8</span>
     <div class="stat-label">task types classified</div>
   </div>
   <div class="stat">
@@ -393,6 +393,26 @@
       <h3>Token ledger</h3>
       <p>Per-issue and per-session token spend tracked in <code>.autoship/token-ledger.json</code>. <code>/autoship:status</code> shows per-model cost breakdown.</p>
     </div>
+    <div class="card">
+      <div class="card-icon">🦀</div>
+      <h3>Rust/unsafe routing</h3>
+      <p><code>rust_unsafe</code> task type and <code>rust_windows</code> profile route unsafe Rust, DLL injection, and Windows-specific issues directly to Claude — skipping Gemini/Codex which have a 100% STUCK rate on these patterns.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">🏗️</div>
+      <h3>Project context injection</h3>
+      <p>AutoShip extracts Patterns/Conventions/Gotchas from <code>CLAUDE.md</code> and <code>AGENTS.md</code> at startup, injecting project conventions into every dispatch prompt so agents arrive with full context.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">🎯</div>
+      <h3>Opus pre-dispatch advisor</h3>
+      <p>Complex issues with <code>unsafe</code> code, DLL hooks, or cross-crate scope trigger an Opus advisor call before dispatch. The advisor produces a 200-word implementation brief prepended to the worker prompt.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">⚕️</div>
+      <h3>Codex health check &amp; stuck tracking</h3>
+      <p>Fast-fail <code>codex --version</code> probe (10s timeout) before each dispatch. Per-tool <code>tool_stuck_count</code> in quota.json — tool marked exhausted after 3 consecutive STUCKs, emits <code>TOOL_DEGRADED</code> event.</p>
+    </div>
   </div>
 </section>
 
@@ -418,6 +438,7 @@
       <tr><td>medium_code</td><td><strong>Codex GPT</strong></td><td>Claude Sonnet</td><td>—</td></tr>
       <tr><td>mechanical</td><td>Claude Haiku</td><td>Gemini</td><td>Codex Spark</td></tr>
       <tr><td>ci_fix</td><td>Claude Haiku</td><td>Gemini</td><td>—</td></tr>
+      <tr><td>rust_unsafe</td><td><strong>Claude Haiku</strong></td><td>Claude Sonnet</td><td>—</td></tr>
       <tr><td>complex</td><td><strong>Sonnet + Opus advisor</strong></td><td>Sonnet retry</td><td>Opus re-slice</td></tr>
     </tbody>
   </table>

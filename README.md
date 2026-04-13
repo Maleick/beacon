@@ -90,12 +90,16 @@ You come back to merged PRs.
 
 - **Third-party first** — burns Codex, Gemini, and Copilot quota before touching Claude tokens
 - **Parallel workers** — up to 20 issues in flight simultaneously
-- **Task-type routing** — classifies issues into 7 categories, routes each to the best agent
+- **Task-type routing** — classifies issues into 8 categories (incl. `rust_unsafe`), routes each to the best agent
 - **Live routing config** — edit `AUTOSHIP.md` front matter to change agent priorities, takes effect immediately
 - **Verification pipeline** — every result reviewed against acceptance criteria before a PR opens
 - **Token ledger** — per-issue and per-session token spend tracked in `.autoship/token-ledger.json`
 - **Event-driven** — bash monitors watch agent output, PR CI, and GitHub issues in real time
 - **Durable state** — survives restarts via `.autoship/state.json` and GitHub labels
+- **Project context injection** — CLAUDE.md/AGENTS.md conventions extracted at startup and injected into every dispatch prompt
+- **Opus pre-dispatch advisor** — complex/unsafe issues get a 200-word architectural brief before worker dispatch
+- **Codex health-check & stuck tracking** — fast-fail probe + per-tool `stuck_count`; exhausted at 3 consecutive STUCKs
+- **Rust/Windows routing** — `rust_unsafe` task type + `rust_windows` profile detection route unsafe Rust to Claude
 
 ## Install
 
@@ -307,7 +311,7 @@ hooks/
   update-state.sh            ← write issue state + token counts
   cleanup-worktree.sh        ← archive result, remove worktree, close issue
   quota-update.sh            ← decay-based API quota estimation
-  classify-issue.sh          ← label issues by task type (7 categories)
+  classify-issue.sh          ← label issues by task type (8 categories)
   dispatch-codex-appserver.sh← drive Codex via JSON-RPC (no tmux)
   emit-event.sh              ← atomic flock write to event-queue.json
 skills/
@@ -338,7 +342,7 @@ Real dispatch results from AutoShip running on its own codebase:
 | Archival bug fix    | Claude Sonnet    | ~9 min            | Content validation added          |
 | **Average**         | —                | **~9 min**        | **issue open → PR merged**        |
 
-> AutoShip shipped all 7 v1.1.0 issues — open to merged PR — in a single session. Zero manual PRs. Zero manual merges.
+> AutoShip shipped all 9 v1.4.0 self-improvement issues — open to merged PR — in a single session. Zero manual PRs. Zero manual merges.
 
 ## Star This Repo
 
