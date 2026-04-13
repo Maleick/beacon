@@ -165,6 +165,7 @@ append_ledger_record() {
   elif command -v lockf >/dev/null 2>&1; then
     local record_tmp
     record_tmp=$(mktemp)
+    chmod 600 "$record_tmp"   # close TOCTOU window before writing record data
     printf '%s' "$record" > "$record_tmp"
     # Pass paths as positional args ($1, $2) to avoid shell injection from special chars in paths
     lockf -k "$lock" bash -c '

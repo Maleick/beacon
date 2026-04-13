@@ -205,6 +205,7 @@ init_token_ledger() {
     # without quoting/escaping issues.
     local session_tmp
     session_tmp=$(mktemp)
+    chmod 600 "$session_tmp"   # close TOCTOU window before writing session data
     printf '%s' "$new_session" > "$session_tmp"
     # Pass paths as positional args ($1, $2) to avoid injection from special chars in paths
     lockf -k "$lock" bash -c '

@@ -22,6 +22,37 @@ Before verification, determine the repo's test command. Check in order:
 
 Cache the discovered command in `.beacon/state.json` under `test_command` so subsequent verifications skip discovery.
 
+## Step 0.5: Pre-Verification Guards
+
+Before spawning the reviewer, run these assertions. Any failure → immediate FAIL, no reviewer spawned.
+
+**1. Path canonicalization** — assert `BEACON_RESULT_PATH` is inside `WORKTREE_PATH`:
+
+```bash
+REAL_RESULT=$(realpath "$BEACON_RESULT_PATH" 2>/dev/null)
+REAL_WORKTREE=$(realpath "$WORKTREE_PATH" 2>/dev/null)
+if [[ -z "$REAL_RESULT" || "$REAL_RESULT" != "$REAL_WORKTREE"/* ]]; then
+  echo "VERDICT: FAIL — BEACON_RESULT_PATH is outside worktree (possible symlink escape)"
+  # Mark issue blocked, skip to escalation
+fi
+```
+
+This prevents a worker agent from writing `BEACON_RESULT.md` as a symlink pointing outside the worktree.
+
+**2. Non-empty diff** — assert the agent actually made changes:
+
+```bash
+DIFF_OUTPUT=$(git -C "$WORKTREE_PATH" diff main...HEAD 2>/dev/null)
+if [[ -z "$DIFF_OUTPUT" ]]; then
+  echo "VERDICT: FAIL — git diff main...HEAD is empty. No changes were committed."
+  # Mark issue blocked, skip to escalation
+fi
+```
+
+An empty diff means the agent reported COMPLETE without committing anything. The reviewer **must not** be allowed to PASS an empty diff — this guard is mandatory and cannot be overridden by the result file contents.
+
+---
+
 ## Step 1: Initial Verification
 
 Spawn the `beacon-reviewer` agent with these structured variables:
