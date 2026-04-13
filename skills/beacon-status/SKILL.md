@@ -16,7 +16,7 @@ Display the current state of the Beacon orchestration session.
 cat .beacon/state.json 2>/dev/null
 ```
 
-**If file is missing**: Display "No active Beacon session. Run `/autoship:start` to begin." and stop.
+**If file is missing**: Display "No active Beacon session. Run `/beacon:start` to begin." and stop.
 
 Also read the quota file:
 
@@ -53,7 +53,7 @@ where N comes from `state.json` → `stats.session_dispatched` (or `0` if not se
 ```
 BEACON STATUS: ERROR
 State file corrupted. Recovery options:
-  1. Run `/autoship:start` to rebuild state from GitHub labels
+  1. Run `/beacon:start` to rebuild state from GitHub labels
   2. Delete .beacon/state.json and restart
 ```
 
@@ -72,7 +72,7 @@ gh pr list --state open --json number --jq 'length'
 gh pr list --state merged --json number --jq 'length'
 ```
 
-Store results as `pr-open` and `pr_merged` for use in the PROGRESS section.
+Store results as `pr_open` and `pr_merged` for use in the PROGRESS section.
 
 ### Step 3: Reconcile
 
@@ -127,16 +127,16 @@ Store per-model counts keyed by agent name. Known models to always display (show
 
 **PROGRESS fields** — read from `state.json` → `stats`:
 
-| Display label          | JSON key                    |
-| ---------------------- | --------------------------- |
-| Session Dispatched     | `session_dispatched`        |
-| Session Completed      | `session_completed`         |
-| All-time Dispatched    | `total_dispatched_all_time` |
-| All-time Completed     | `total_completed_all_time`  |
-| Failed                 | `failed`                    |
-| Blocked                | `blocked`                   |
+| Display label       | JSON key                    |
+| ------------------- | --------------------------- |
+| Session Dispatched  | `session_dispatched`        |
+| Session Completed   | `session_completed`         |
+| All-time Dispatched | `total_dispatched_all_time` |
+| All-time Completed  | `total_completed_all_time`  |
+| Failed              | `failed`                    |
+| Blocked             | `blocked`                   |
 
-`session_*` counters reset to 0 on each `/autoship:start`. `total_*` counters grow monotonically across sessions.
+`session_*` counters reset to 0 on each `/beacon:start`. `total_*` counters grow monotonically across sessions.
 
 ## Output Format
 

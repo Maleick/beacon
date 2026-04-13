@@ -21,7 +21,7 @@ QUEUE="${REPO_ROOT}/.beacon/event-queue.json"
 LOCK="${REPO_ROOT}/.beacon/event-queue.lock"
 
 # Ensure queue exists as a valid JSON array
-if [[ ! -f "$QUEUE" ]] || ! jq -e 'if type == "array" then true else false end' "$QUEUE" >/dev/null 2>&1; then
+if [[ ! -f "$QUEUE" ]] || ! jq -e 'type == "array"' "$QUEUE" >/dev/null 2>&1; then
   echo "[]" > "$QUEUE"
 fi
 touch "$LOCK"

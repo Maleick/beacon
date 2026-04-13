@@ -12,8 +12,7 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
 WORKSPACE="${REPO_ROOT}/.beacon/workspaces/${ISSUE_KEY}"
 PANE_LOG="${WORKSPACE}/pane.log"
 
-STALL_TIMEOUT="${STALL_TIMEOUT_MS:-300000}"
-STALL_SECS=$(( STALL_TIMEOUT / 1000 ))
+STALL_SECS=$(( ${STALL_TIMEOUT_MS:-300000} / 1000 ))
 
 if ! command -v codex >/dev/null 2>&1; then
   echo "STUCK" >> "$PANE_LOG"
@@ -29,7 +28,6 @@ fi
 mkdir -p "$WORKSPACE"
 touch "$PANE_LOG"
 
-# --- IPC fifos ---
 FIFO_IN="${WORKSPACE}/.codex-stdin"
 FIFO_OUT="${WORKSPACE}/.codex-stdout"
 rm -f "$FIFO_IN" "$FIFO_OUT"
@@ -106,7 +104,6 @@ done
 
 # Cancel watchdog — we got a response
 kill "$WATCHDOG_PID" 2>/dev/null || true
-WATCHDOG_PID=""
 
 # Close stdin fifo
 exec 3>&-
@@ -119,19 +116,13 @@ echo "$STATUS" >> "$PANE_LOG"
 
 # Emit event to event queue (atomic flock write)
 ISSUE_NUMBER="${ISSUE_KEY#issue-}"
-if [[ "$STATUS" == "COMPLETE" ]]; then
-  EVENT_TYPE="verify"
-else
-  EVENT_TYPE="agent_stuck"
-fi
-
-NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+EVENT_TYPE="$( [[ "$STATUS" == "COMPLETE" ]] && echo "verify" || echo "agent_stuck" )"
 EVENT=$(jq -n \
   --arg type    "$EVENT_TYPE" \
   --arg issue   "$ISSUE_KEY" \
   --arg issueN  "$ISSUE_NUMBER" \
   --argjson tok "$TOKENS_USED" \
-  --arg ts      "$NOW" \
+  --arg ts      "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
   '{type: $type, issue: $issue, issue_number: ($issueN | tonumber), tokens_used: $tok, timestamp: $ts}')
 
 bash "${REPO_ROOT}/hooks/emit-event.sh" "$EVENT"
