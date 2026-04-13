@@ -11,3 +11,15 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Wolf AI assistant system files
+.wolf/
+
+# Claude Code session/project files
+.claude/
+
+# Serena semantic tools
+.serena/
+
+# Backup files
+*.bak
