@@ -12,11 +12,11 @@ Third-party tools (Codex/Gemini) are dispatched first for simple and medium issu
 
 ## Dispatch Priority Matrix
 
-| Complexity | Primary                      | Fallback              | Last Resort              |
-| ---------- | ---------------------------- | --------------------- | ------------------------ |
-| Simple     | Codex/Gemini (quota > 10%)   | Claude Haiku          | Claude Haiku (rate-lim)  |
-| Medium     | Codex/Gemini (quota > 10%)   | Claude Sonnet         | Claude Sonnet (rate-lim) |
-| Complex    | Claude Sonnet + autoresearch | Claude Sonnet (retry) | Opus advisor: re-slice   |
+| Complexity | Primary                      | Fallback                         | Last Resort              |
+| ---------- | ---------------------------- | -------------------------------- | ------------------------ |
+| Simple     | Codex-Spark/GPT (quota > 10%)| Gemini (quota > 10%) → Haiku    | Claude Haiku (rate-lim)  |
+| Medium     | Codex-Spark/GPT (quota > 10%)| Gemini (quota > 10%) → Sonnet   | Claude Sonnet (rate-lim) |
+| Complex    | Claude Sonnet + autoresearch | Claude Sonnet (retry)            | Opus advisor: re-slice   |
 
 # TODO: Grok support pending CLI detection
 

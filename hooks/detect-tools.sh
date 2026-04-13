@@ -133,7 +133,7 @@ detect_codex() {
 }
 
 detect_gemini() {
-  if command -v gemini >/dev/null 2>&1; then
+  if command -v gemini >/dev/null 2>&1 && gemini --version >/dev/null 2>&1; then
     local ver qpct
     ver=$(gemini --version 2>/dev/null | head -1) || ver="unknown"
     ver=$(printf '%s' "$ver" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr -d '\n')
