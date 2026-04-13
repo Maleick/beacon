@@ -123,7 +123,7 @@ Launch three bash monitor scripts via the Monitor tool. These run for the sessio
 
 ```
 Monitor({
-  command: "HOOKS=$(cat .autoship/hooks_dir) && bash \"$HOOKS/monitor-agents.sh\"",
+  command: "ROOT=$(git rev-parse --show-toplevel) && HOOKS=$(cat \"$ROOT/.autoship/hooks_dir\") && bash \"$HOOKS/monitor-agents.sh\"",
   description: "Agent completion status watcher"
 })
 ```
@@ -138,7 +138,7 @@ Monitor({
 
 ```
 Monitor({
-  command: "HOOKS=$(cat .autoship/hooks_dir) && bash \"$HOOKS/monitor-prs.sh\"",
+  command: "ROOT=$(git rev-parse --show-toplevel) && HOOKS=$(cat \"$ROOT/.autoship/hooks_dir\") && bash \"$HOOKS/monitor-prs.sh\"",
   description: "PR CI and merge status watcher"
 })
 ```
@@ -149,7 +149,7 @@ Emits: `[PR_CI_PASS]`, `[PR_CI_FAIL]`, `[PR_CONFLICT]`, `[PR_MERGED]`
 
 ```
 Monitor({
-  command: "HOOKS=$(cat .autoship/hooks_dir) && bash \"$HOOKS/monitor-issues.sh\"",
+  command: "ROOT=$(git rev-parse --show-toplevel) && HOOKS=$(cat \"$ROOT/.autoship/hooks_dir\") && bash \"$HOOKS/monitor-issues.sh\"",
   description: "GitHub issue new/closed watcher"
 })
 ```
@@ -244,17 +244,17 @@ Process the printed event. Do NOT read the queue and then write it in two separa
 
 ### Event Reactions
 
-| Event type     | Sonnet action                                                      |
-| -------------- | ------------------------------------------------------------------ |
-| `verify`       | Run post-completion pipeline (verify → simplify → PR)              |
-| `stuck`        | Check attempt count → re-dispatch or spawn Opus advisor            |
+| Event type     | Sonnet action                                                        |
+| -------------- | -------------------------------------------------------------------- |
+| `verify`       | Run post-completion pipeline (verify → simplify → PR)                |
+| `stuck`        | Check attempt count → re-dispatch or spawn Opus advisor              |
 | `blocked`      | Mark blocked in state, add `autoship:blocked` label, notify operator |
-| `new_issue`    | Spawn Opus advisor for classification → insert into plan           |
-| `closed_issue` | Cancel running agent, clean up worktree                            |
-| `pr_pass`      | Merge (simple) or spawn reviewer first (medium/complex)            |
-| `pr_fail`      | Spawn CI autofix agent (Haiku for mechanical, Sonnet for logic)    |
-| `pr_conflict`  | Spawn Opus advisor for resolution strategy                         |
-| `pr_merged`    | Run cleanup pipeline (worktree, branch, labels, close issue)       |
+| `new_issue`    | Spawn Opus advisor for classification → insert into plan             |
+| `closed_issue` | Cancel running agent, clean up worktree                              |
+| `pr_pass`      | Merge (simple) or spawn reviewer first (medium/complex)              |
+| `pr_fail`      | Spawn CI autofix agent (Haiku for mechanical, Sonnet for logic)      |
+| `pr_conflict`  | Spawn Opus advisor for resolution strategy                           |
+| `pr_merged`    | Run cleanup pipeline (worktree, branch, labels, close issue)         |
 
 ---
 
