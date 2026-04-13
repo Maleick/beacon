@@ -107,7 +107,7 @@ case "$ACTION" in
     ;;
   set-running)
     NEW_STATE="running"
-    STAT_KEY="dispatched"
+    STAT_KEY="dispatched"  # signals: increment session_dispatched + total_dispatched_all_time
     ADD_LABEL="beacon:in-progress"
     REMOVE_LABELS=("beacon:blocked" "beacon:paused" "beacon:done")
     ;;
@@ -119,7 +119,7 @@ case "$ACTION" in
     ;;
   set-completed)
     NEW_STATE="approved"
-    STAT_KEY="completed"
+    STAT_KEY="completed"  # signals: increment session_completed + total_completed_all_time
     ADD_LABEL=""
     REMOVE_LABELS=()
     ;;
@@ -131,7 +131,7 @@ case "$ACTION" in
     ;;
   set-merged)
     NEW_STATE="merged"
-    STAT_KEY="completed"
+    STAT_KEY="completed"  # signals: increment session_completed + total_completed_all_time
     ADD_LABEL="beacon:done"
     REMOVE_LABELS=("beacon:in-progress" "beacon:blocked" "beacon:paused")
     ;;
@@ -213,12 +213,31 @@ else
     '.issues[$id].state = $state | .updated_at = $now' \
     "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 fi
-# Increment stat counter if applicable
+# Increment stat counters if applicable.
+# "dispatched" → session_dispatched + total_dispatched_all_time
+# "completed"  → session_completed  + total_completed_all_time
+# other keys   → incremented directly (e.g. "blocked", "failed")
 if [[ -n "$STAT_KEY" ]]; then
   TMP=$(make_tmp)
-  jq --arg key "$STAT_KEY" \
-    '.stats[$key] += 1' \
-    "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+  case "$STAT_KEY" in
+    dispatched)
+      jq '
+        .stats.session_dispatched        = ((.stats.session_dispatched        // 0) + 1) |
+        .stats.total_dispatched_all_time = ((.stats.total_dispatched_all_time // 0) + 1)
+      ' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+      ;;
+    completed)
+      jq '
+        .stats.session_completed        = ((.stats.session_completed        // 0) + 1) |
+        .stats.total_completed_all_time = ((.stats.total_completed_all_time // 0) + 1)
+      ' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+      ;;
+    *)
+      jq --arg key "$STAT_KEY" \
+        '.stats[$key] = ((.stats[$key] // 0) + 1)' \
+        "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+      ;;
+  esac
 fi
 
 # Manage GitHub labels for lifecycle transitions

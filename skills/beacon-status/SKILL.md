@@ -46,7 +46,7 @@ For Claude's quota line: check if `quota.json` has a `claude` entry. If it does,
 Claude:      Claude Max — N dispatches (session)
 ```
 
-where N comes from `state.json` → `stats.claude_dispatches` (or `0` if not set). This accurately reflects session usage without fabricating a percentage.
+where N comes from `state.json` → `stats.session_dispatched` (or `0` if not set). This accurately reflects session usage without fabricating a percentage.
 
 **If file is corrupted** (invalid JSON): Display error and suggest recovery:
 
@@ -96,6 +96,19 @@ If `started_at` is missing, display `Uptime: unknown`.
 
 ### Step 5: Render Output
 
+**PROGRESS fields** — read from `state.json` → `stats`:
+
+| Display label          | JSON key                    |
+| ---------------------- | --------------------------- |
+| Session Dispatched     | `session_dispatched`        |
+| Session Completed      | `session_completed`         |
+| All-time Dispatched    | `total_dispatched_all_time` |
+| All-time Completed     | `total_completed_all_time`  |
+| Failed                 | `failed`                    |
+| Blocked                | `blocked`                   |
+
+`session_*` counters reset to 0 on each `/beacon:start`. `total_*` counters grow monotonically across sessions.
+
 ## Output Format
 
 ```
@@ -117,7 +130,8 @@ QUOTA
   Gemini:      ██████░░░░░░░░░░░░░░ ~30%  (5 dispatches, est.)
 
 PROGRESS
-  Dispatched: 12  Completed: 8  Failed: 1  Blocked: 0
+  Session:   Dispatched: 4   Completed: 3   Failed: 1  Blocked: 0
+  All-time:  Dispatched: 45  Completed: 40
   PRs open: 3  PRs merged: 5
 ```
 
@@ -156,7 +170,8 @@ QUOTA
   <same format>
 
 PROGRESS
-  Dispatched: 12  Completed: 12  Failed: 0  Blocked: 0
+  Session:   Dispatched: 12  Completed: 12  Failed: 0  Blocked: 0
+  All-time:  Dispatched: 68  Completed: 68
   PRs open: 0  PRs merged: 12
   All issues in current phase complete. Run checkpoint to continue.
 ```
