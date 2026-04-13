@@ -115,8 +115,10 @@ if [[ ! -f "$STATE_FILE" ]]; then
       issues: {},
       tools: $tools,
       stats: {
-        dispatched: 0,
-        completed: 0,
+        session_dispatched: 0,
+        session_completed: 0,
+        total_dispatched_all_time: 0,
+        total_completed_all_time: 0,
         failed: 0,
         blocked: 0
       }
@@ -130,11 +132,25 @@ else
   fi
 
   # Refresh tools section with current quota data without touching other state.
+  # Also reset session-scoped counters on each startup, and migrate old key names if present.
   NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-  UPDATED=$(jq --argjson tools "$TOOLS_JSON" --arg now "$NOW" \
-    '.tools = $tools | .updated_at = $now' "$STATE_FILE") && \
+  UPDATED=$(jq --argjson tools "$TOOLS_JSON" --arg now "$NOW" '
+    .tools = $tools |
+    .updated_at = $now |
+    # Migrate old "dispatched"/"completed" keys to new schema (keep totals, reset session)
+    if (.stats | has("dispatched")) then
+      .stats.total_dispatched_all_time = (.stats.total_dispatched_all_time // .stats.dispatched) |
+      .stats.total_completed_all_time  = (.stats.total_completed_all_time  // .stats.completed) |
+      del(.stats.dispatched) | del(.stats.completed)
+    else . end |
+    # Ensure all four keys exist
+    .stats.session_dispatched        = 0 |
+    .stats.session_completed         = 0 |
+    .stats.total_dispatched_all_time = (.stats.total_dispatched_all_time // 0) |
+    .stats.total_completed_all_time  = (.stats.total_completed_all_time  // 0)
+  ' "$STATE_FILE") && \
     printf '%s\n' "$UPDATED" > "$STATE_FILE"
-  echo "Refreshed tools quota in $STATE_FILE"
+  echo "Refreshed tools quota and reset session counters in $STATE_FILE"
 fi
 
 # Create config.json for operator overrides (if not present)
@@ -263,7 +279,7 @@ check_available_never_dispatched() {
   fi
 
   local total_dispatches
-  total_dispatches=$(jq -r '.stats.dispatched // 0' "$STATE_FILE" 2>/dev/null) || total_dispatches=0
+  total_dispatches=$(jq -r '.stats.total_dispatched_all_time // 0' "$STATE_FILE" 2>/dev/null) || total_dispatches=0
 
   # Only check if we've done 10+ dispatches
   if (( total_dispatches < 10 )); then
