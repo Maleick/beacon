@@ -367,6 +367,143 @@ check_available_never_dispatched() {
 
 check_available_never_dispatched || true
 
+# --- Routing Config: parse BEACON.md front matter and write .beacon/routing.json ---
+# Default routing matrix used when BEACON.md is absent or YAML is malformed.
+DEFAULT_ROUTING='{
+  "routing": {
+    "research":     ["gemini", "claude-haiku"],
+    "docs":         ["gemini", "claude-haiku"],
+    "simple_code":  ["codex-spark", "gemini"],
+    "medium_code":  ["codex-gpt", "claude-sonnet"],
+    "complex":      ["claude-sonnet", "codex-gpt"],
+    "mechanical":   ["claude-haiku", "gemini"],
+    "ci_fix":       ["claude-haiku", "gemini"]
+  },
+  "quota_thresholds": {"low": 10, "exhausted": 0},
+  "stall_timeout_ms": 300000,
+  "max_concurrent_agents": 6
+}'
+
+load_routing_config() {
+  local routing_file="$BEACON_DIR/routing.json"
+  local beacon_md="BEACON.md"
+
+  # If BEACON.md is absent, write the default and return.
+  if [[ ! -f "$beacon_md" ]]; then
+    printf '%s\n' "$DEFAULT_ROUTING" > "$routing_file"
+    echo "routing.json initialized with defaults (BEACON.md not found)"
+    return 0
+  fi
+
+  # Extract YAML front matter (content between the first pair of --- markers).
+  local front_matter
+  front_matter=$(awk '/^---$/{if(p){exit}else{p=1;next}} p{print}' "$beacon_md" 2>/dev/null) || front_matter=""
+
+  if [[ -z "$front_matter" ]]; then
+    printf '%s\n' "$DEFAULT_ROUTING" > "$routing_file"
+    echo "routing.json initialized with defaults (no front matter in BEACON.md)" >&2
+    return 0
+  fi
+
+  # Parse each routing entry: "  key: [a, b, c]" → JSON array
+  # Also parse scalar fields: quota_thresholds, stall_timeout_ms, max_concurrent_agents.
+  local parsed
+  parsed=$(printf '%s\n' "$front_matter" | python3 - << 'PYEOF'
+import sys, json, re
+
+text = sys.stdin.read()
+
+def parse_inline_list(s):
+    """Parse '[a, b, c]' into a Python list of strings."""
+    s = s.strip()
+    if s.startswith('[') and s.endswith(']'):
+        items = [x.strip().strip('"').strip("'") for x in s[1:-1].split(',') if x.strip()]
+        return items
+    return None
+
+result = {}
+routing = {}
+quota = {}
+stall = None
+max_agents = None
+
+lines = text.splitlines()
+current_section = None
+
+for line in lines:
+    # Top-level key (no leading spaces)
+    m = re.match(r'^(\w+):\s*(.*)', line)
+    if m:
+        key, val = m.group(1), m.group(2).strip()
+        if key == 'routing':
+            current_section = 'routing'
+        elif key == 'quota_thresholds':
+            current_section = 'quota_thresholds'
+        elif key == 'stall_timeout_ms':
+            try:
+                stall = int(val)
+            except ValueError:
+                pass
+            current_section = None
+        elif key == 'max_concurrent_agents':
+            try:
+                max_agents = int(val)
+            except ValueError:
+                pass
+            current_section = None
+        continue
+
+    # Indented key under current section
+    m2 = re.match(r'^\s+(\w+):\s*(.*)', line)
+    if m2 and current_section:
+        k, v = m2.group(1), m2.group(2).strip()
+        if current_section == 'routing':
+            lst = parse_inline_list(v)
+            if lst is not None:
+                routing[k] = lst
+        elif current_section == 'quota_thresholds':
+            try:
+                quota[k] = int(v)
+            except ValueError:
+                pass
+
+result['routing'] = routing if routing else None
+result['quota_thresholds'] = quota if quota else None
+if stall is not None:
+    result['stall_timeout_ms'] = stall
+if max_agents is not None:
+    result['max_concurrent_agents'] = max_agents
+
+print(json.dumps(result))
+PYEOF
+  ) 2>/dev/null || parsed=""
+
+  # Validate parsed result — must have a non-empty routing object.
+  if [[ -z "$parsed" ]] || ! printf '%s' "$parsed" | jq -e '.routing | length > 0' >/dev/null 2>&1; then
+    printf '%s\n' "$DEFAULT_ROUTING" > "$routing_file"
+    echo "routing.json initialized with defaults (BEACON.md front matter parse failed)" >&2
+    return 0
+  fi
+
+  # Merge parsed values over defaults so missing fields fall back gracefully.
+  local merged
+  merged=$(jq -n \
+    --argjson defaults "$DEFAULT_ROUTING" \
+    --argjson parsed "$parsed" \
+    '
+      $defaults
+      | if ($parsed.routing | length) > 0 then .routing = $parsed.routing else . end
+      | if ($parsed.quota_thresholds | length) > 0 then .quota_thresholds = $parsed.quota_thresholds else . end
+      | if $parsed.stall_timeout_ms != null then .stall_timeout_ms = $parsed.stall_timeout_ms else . end
+      | if $parsed.max_concurrent_agents != null then .max_concurrent_agents = $parsed.max_concurrent_agents else . end
+    ' 2>/dev/null) || merged="$DEFAULT_ROUTING"
+
+  printf '%s\n' "$merged" > "$routing_file"
+  echo "routing.json loaded from BEACON.md front matter"
+}
+
+load_routing_config || true
+
 # Sweep stale worktrees on startup (non-fatal if it fails)
 echo "Scanning for stale worktrees..."
 bash "$SCRIPT_DIR/sweep-stale.sh" 2>/dev/null || true

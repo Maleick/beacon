@@ -30,11 +30,34 @@ if [[ -z "$REPO_SLUG" ]]; then
   REPO_SLUG=$(git remote get-url origin 2>/dev/null | sed -E 's#^.+[:/]([^/]+/[^/]+)(\.git)?$#\1#' | sed 's/\.git$//')
 fi
 
+# Capture initial mtime of BEACON.md so we can detect changes during polling.
+# stat -f %m (macOS) or stat -c %Y (Linux) — try both for portability.
+_beacon_md_mtime() {
+  local path="BEACON.md"
+  if [[ ! -f "$path" ]]; then
+    echo "0"
+    return
+  fi
+  stat -f %m "$path" 2>/dev/null \
+    || stat -c %Y "$path" 2>/dev/null \
+    || echo "0"
+}
+
+BEACON_MD_LAST_MTIME=$(_beacon_md_mtime)
+
 last_check=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 while true; do
   sleep 60
   now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+  # --- Hot-reload: re-parse BEACON.md if it changed since last poll ---
+  BEACON_MD_CURRENT_MTIME=$(_beacon_md_mtime)
+  if [[ "$BEACON_MD_CURRENT_MTIME" != "$BEACON_MD_LAST_MTIME" ]]; then
+    bash hooks/beacon-init.sh 2>/dev/null || true
+    echo "BEACON.md changed — routing config reloaded" >> "$BEACON_DIR/poll.log"
+    BEACON_MD_LAST_MTIME="$BEACON_MD_CURRENT_MTIME"
+  fi
 
   # New issues opened since last check
   new_issues=$(gh api \
