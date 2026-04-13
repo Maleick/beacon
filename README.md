@@ -76,9 +76,12 @@ You get a dashboard.
 └──────────────────────────────────────────┘
 ```
 
-- **Third-party first** — uses Codex and Gemini before spending Claude tokens
+- **Third-party first** — uses Codex, Gemini, and Copilot before spending Claude tokens
 - **Parallel workers** — multiple issues in flight simultaneously
+- **Task-type routing** — classifies issues (research/docs/code/ci_fix) and routes to the best agent
+- **Configurable routing** — edit `BEACON.md` front matter to change agent priority per task type, live
 - **Verification pipeline** — every result reviewed before a PR opens
+- **Token ledger** — tracks token spend per issue and per session in `.beacon/token-ledger.json`
 - **Event-driven** — bash monitors watch agent output, PRs, and issues in real time
 - **Durable state** — survives session restarts via `.beacon/state.json` and GitHub labels
 
@@ -102,6 +105,7 @@ Done. Start a new session and run `/beacon:start`.
 | --------------- | ----------------------------------------------------- |
 | `codex`         | OpenAI-powered worker agents (third-party, preferred) |
 | `gemini`        | Google-powered worker agents (third-party, preferred) |
+| `gh copilot`    | GitHub Copilot worker agents (via `gh` CLI extension) |
 | Claude fallback | Built-in — always available                           |
 
 Beacon detects available tools at startup and assigns work accordingly.
@@ -123,11 +127,13 @@ GitHub Issues
      ▼
 /beacon:start
      │
-     ├─ Haiku triage — categorizes complexity (simple/medium/complex)
+     ├─ Classify — task-type classifier labels each issue (research/docs/simple_code/
+     │             medium_code/complex/mechanical/ci_fix)
      │
      ├─ Dispatch — creates git worktree, writes focused prompt
-     │   ├─ Simple  → Codex (fastest, cheapest)
-     │   ├─ Medium  → Gemini or Codex
+     │   ├─ Routing from BEACON.md front matter (hot-reloadable)
+     │   ├─ Simple/medium  → Codex (app-server JSON-RPC, no tmux)
+     │   ├─ Simple/medium  → Gemini or Copilot (quota-aware fallback)
      │   └─ Complex → Claude Sonnet + Opus advisor
      │
      ├─ Monitors (bash, run every 5–60s)
@@ -165,14 +171,20 @@ State lives in two places: `.beacon/state.json` (local, fast) and GitHub labels 
 hooks/
   beacon-activate.sh  ← SessionStart: init + system context injection
   beacon-init.sh      ← create .beacon/ directory structure
-  detect-tools.sh     ← detect Codex/Gemini/Grok availability + quota
+  detect-tools.sh     ← detect Codex/Gemini/Copilot availability + quota
   monitor-agents.sh   ← watch pane.log for status words (5s)
   monitor-prs.sh      ← watch PR CI + merge status (30s)
   monitor-issues.sh   ← poll GitHub for new/closed issues (60s)
-  update-state.sh     ← write issue state to state.json
-  cleanup-worktree.sh ← remove worktree, branch, close issue
-  sweep-stale.sh      ← clean orphaned worktrees on startup
-  quota-update.sh     ← decay-based API quota estimation
+  update-state.sh            ← write issue state + token counts to state.json
+  cleanup-worktree.sh        ← archive result, remove worktree, close issue
+  sweep-stale.sh             ← clean orphaned worktrees on startup
+  quota-update.sh            ← decay-based API quota estimation
+  classify-issue.sh          ← label issues by task type (7 categories)
+  dispatch-codex-appserver.sh← drive Codex via JSON-RPC app-server (no tmux)
+  emit-event.sh              ← atomic flock write to event-queue.json
+  shims/
+    gemini-appserver.sh      ← Symphony shim for Gemini CLI
+    grok-appserver.sh        ← deprecated — Grok has no OAuth support
 skills/
   beacon/             ← orchestration protocol (v3)
   beacon-dispatch/    ← agent dispatch (worktree, prompt, third-party first)
@@ -188,6 +200,7 @@ commands/
   plan.md             ← /beacon:plan
   status.md           ← /beacon:status
   beacon.md           ← /beacon:beacon (help)
+BEACON.md             ← routing matrix + quota config (YAML front matter, hot-reload)
 ```
 
 ## Star This Repo
