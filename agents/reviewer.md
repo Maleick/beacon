@@ -86,7 +86,5 @@ After writing `BEACON_RESULT.md`, write your verdict to `.beacon/event-queue.jso
 ```bash
 VERDICT="PASS"  # or FAIL
 EVENT="{\"type\":\"verify\",\"issue\":\"<issue-key>\",\"priority\":2,\"data\":{\"verdict\":\"$VERDICT\"}}"
-flock .beacon/event-queue.lock \
-  jq --argjson evt "$EVENT" '. + [$evt]' .beacon/event-queue.json \
-  > .beacon/event-queue.tmp && mv .beacon/event-queue.tmp .beacon/event-queue.json
+bash hooks/emit-event.sh "$EVENT"
 ```

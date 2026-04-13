@@ -386,9 +386,7 @@ After dispatching, write a dispatch record to the event queue:
 
 ```bash
 EVENT='{"type":"verify","issue":"<issue-key>","priority":2,"data":{"agent":"claude-haiku","worktree_free":true}}'
-flock .beacon/event-queue.lock \
-  jq --argjson evt "$EVENT" '. + [$evt]' .beacon/event-queue.json \
-  > .beacon/event-queue.tmp && mv .beacon/event-queue.tmp .beacon/event-queue.json
+bash hooks/emit-event.sh "$EVENT"
 ```
 
 Update state:
@@ -476,9 +474,7 @@ After dispatching, write a dispatch record to the event queue:
 
 ```bash
 EVENT='{"type":"verify","issue":"<issue-key>","priority":2,"data":{"agent":"claude-sonnet","worktree_free":true}}'
-flock .beacon/event-queue.lock \
-  jq --argjson evt "$EVENT" '. + [$evt]' .beacon/event-queue.json \
-  > .beacon/event-queue.tmp && mv .beacon/event-queue.tmp .beacon/event-queue.json
+bash hooks/emit-event.sh "$EVENT"
 ```
 
 Update state:
