@@ -2,7 +2,7 @@
 # classify-issue.sh — Classify a GitHub issue into a task type.
 # Usage: classify-issue.sh <issue-number>
 # Outputs: task_type string to stdout
-# Also writes task_type to .beacon/state.json for that issue.
+# Also writes task_type to .autoship/state.json for that issue.
 #
 # Task types: research | docs | simple_code | medium_code | complex | mechanical | ci_fix
 
@@ -10,7 +10,7 @@ set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
   echo "Usage: $0 <issue-number>" >&2
-  echo "Outputs task_type to stdout and writes it to .beacon/state.json" >&2
+  echo "Outputs task_type to stdout and writes it to .autoship/state.json" >&2
   exit 1
 fi
 
@@ -23,7 +23,7 @@ REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
   exit 1
 }
 
-STATE_FILE="$REPO_ROOT/.beacon/state.json"
+STATE_FILE="$REPO_ROOT/.autoship/state.json"
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "Error: jq is required but not found" >&2

@@ -14,7 +14,7 @@
 
 set -uo pipefail
 
-THREAD_ID="beacon-gemini"
+THREAD_ID="autoship-gemini"
 STALL_TIMEOUT=300
 
 # ---------------------------------------------------------------------------

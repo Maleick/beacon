@@ -1,16 +1,16 @@
-# Beacon Specification v2 → v3
+# AutoShip Specification v2 → v3
 
 Status: v3 Architecture Locked — Implementation In Progress
 Updated: 2026-04-12
 Platform: Claude Code Plugin (macOS-first, tmux-native)
 
-> **v3 Update:** Architecture redesigned to Advisor + Monitor pattern. See `BEACON_V3_ARCHITECTURE.md` for the full v3 spec. This document is updated below to reflect v3 decisions; the original v2 design is preserved for reference.
+> **v3 Update:** Architecture redesigned to Advisor + Monitor pattern. See `AUTOSHIP_ARCHITECTURE.md` for the full v3 spec. This document is updated below to reflect v3 decisions; the original v2 design is preserved for reference.
 
 ---
 
 ## 1. Overview
 
-Beacon is a Claude Code plugin that provides autonomous multi-agent orchestration. It reads work from GitHub Issues, routes tasks to the best available AI CLI tool, verifies results through dedicated reviewer agents, and auto-merges approved work.
+AutoShip is a Claude Code plugin that provides autonomous multi-agent orchestration. It reads work from GitHub Issues, routes tasks to the best available AI CLI tool, verifies results through dedicated reviewer agents, and auto-merges approved work.
 
 **v3 model:** Sonnet is the executor and event-driven orchestrator. Opus is the advisor — spawned only at strategic decision points (UltraPlan, phase checkpoints, escalations). Haiku handles lightweight event triage and simple tasks. Bash scripts run the Monitor processes.
 
@@ -24,8 +24,8 @@ Beacon is a Claude Code plugin that provides autonomous multi-agent orchestratio
 | --- | ------------------ | ------------------------------------------------------ | ----------------------------------------------------------- |
 | 1   | Work discovery     | Hybrid: Discord webhooks + 10-min gh poll              | Real-time reaction via existing infra + safety net          |
 | 2   | Agent dispatch     | TeamCreate for Claude, tmux CLI for Codex/Gemini       | Native protocol where available, direct CLI otherwise       |
-| 3   | Result capture     | BEACON_RESULT.md per worktree + git diff               | Agent never reports via conversation — structured file only |
-| 4   | State management   | .beacon/state.json + GitHub labels                     | Fast local access + durable recovery from GitHub            |
+| 3   | Result capture     | AUTOSHIP_RESULT.md per worktree + git diff               | Agent never reports via conversation — structured file only |
+| 4   | State management   | .autoship/state.json + GitHub labels                     | Fast local access + durable recovery from GitHub            |
 | 5   | Verification       | Dedicated Sonnet reviewer agent                        | Keeps Opus free for orchestration                           |
 | 6   | Concurrency        | Dynamic, soft cap 20, hard cap 50                      | Opus decides based on workload and available quota          |
 | 7   | Post-completion    | verify → simplify → verify → PR → monitor CI → cleanup | Full quality pipeline                                       |
@@ -36,7 +36,7 @@ Beacon is a Claude Code plugin that provides autonomous multi-agent orchestratio
 | 12  | Opus role          | Never reads/writes code                                | Orchestration decisions only                                |
 | 13  | Plugin format      | Multi-skill Claude Code plugin                         | Auto-update via marketplace                                 |
 | 14  | Tmux layout        | Grid (tiled) not stacked                               | Visual clarity at 20 panes                                  |
-| 15  | PR review comments | Sonnet agent addresses automated reviewer feedback     | Copilot etc. leave comments, Beacon handles them            |
+| 15  | PR review comments | Sonnet agent addresses automated reviewer feedback     | Copilot etc. leave comments, AutoShip handles them            |
 
 ### v3 Decisions (locked — supersede v2 where different)
 
@@ -49,7 +49,7 @@ Beacon is a Claude Code plugin that provides autonomous multi-agent orchestratio
 | 5   | Haiku scope              | Simple tasks (2-3 files) + event triage + nit fixing             |
 | 6   | Haiku failure escalation | 1 retry with context, then promote to Sonnet                     |
 | 7   | Agent completion signal  | COMPLETE/BLOCKED/STUCK status words via pipe-pane log            |
-| 8   | Third-party completion   | pane_dead + BEACON_RESULT.md existence (exit codes unreliable)   |
+| 8   | Third-party completion   | pane_dead + AUTOSHIP_RESULT.md existence (exit codes unreliable)   |
 | 9   | Event queue pattern      | Haiku produces → Sonnet consumes after each pipeline step        |
 | 10  | PR comment triage        | Haiku (nits) → Sonnet (bugs) → Opus (design)                     |
 | 11  | CI autofix               | Tiered: Haiku (lint/format) → Sonnet (logic) → Opus (2+ fails)   |
@@ -96,7 +96,7 @@ Claude is always available (Max subscription). Codex and Gemini are prioritized 
 ```
 1. Validate environment (gh, tmux, git repo)
 2. Detect available tools + check quota (hooks/detect-tools.sh)
-3. Load .beacon/state.json or run hooks/beacon-init.sh
+3. Load .autoship/state.json or run hooks/init.sh
 4. Fetch open issues via gh
 5. → ADVISOR CALL: Spawn Opus for UltraPlan
    - Classify complexity per issue
@@ -104,9 +104,9 @@ Claude is always available (Max subscription). Codex and Gemini are prioritized 
    - Build dependency graph (topological sort)
    - Assign tools based on complexity + quota (third-party first)
    - Plan dispatch phases + checkpoints
-   - Returns structured plan JSON → stored in .beacon/state.json
+   - Returns structured plan JSON → stored in .autoship/state.json
 6. Start 3 Monitor processes (agents 5s, PRs 30s, issues 60s)
-7. Initialize event queue: .beacon/event-queue.json
+7. Initialize event queue: .autoship/event-queue.json
 8. Begin dispatching Phase 1 (third-party tools first)
 9. Enter reactive mode — Haiku queues events, Sonnet pulls + acts
 ```
@@ -117,22 +117,22 @@ Claude is always available (Max subscription). Codex and Gemini are prioritized 
 
 ### 5.1 Claude Agents
 
-- Create git worktree: `.beacon/workspaces/<issue-key>`
+- Create git worktree: `.autoship/workspaces/<issue-key>`
 - Use TeamCreate for tmux visibility
 - Dispatch prompt includes:
   - Full issue context + acceptance criteria
   - Instruction to use `/autoresearch:fix` (Sonnet, complex tasks)
-  - Instruction to write `BEACON_RESULT.md` on completion
+  - Instruction to write `AUTOSHIP_RESULT.md` on completion
   - Instruction to NOT merge, push, or close issues
 - All Claude workers run as Sonnet or Haiku (CLAUDE_CODE_SUBAGENT_MODEL=sonnet)
 
 ### 5.2 Codex/Gemini Agents
 
 - Create git worktree (same as above)
-- Write `BEACON_PROMPT.md` to worktree with full issue context
-- Spawn tmux pane: `tmux split-window -t beacon -c <worktree-path>`
-- Rebalance: `tmux select-layout -t beacon tiled`
-- Send command: `tmux send-keys -t <pane> "<tool> -p \"$(cat BEACON_PROMPT.md)\"" Enter`
+- Write `AUTOSHIP_PROMPT.md` to worktree with full issue context
+- Spawn tmux pane: `tmux split-window -t autoship -c <worktree-path>`
+- Rebalance: `tmux select-layout -t autoship tiled`
+- Send command: `tmux send-keys -t <pane> "<tool> -p \"$(cat AUTOSHIP_PROMPT.md)\"" Enter`
 - Title pane: `tmux select-pane -t <pane> -T "<TOOL>: <issue-key>"`
 
 ### 5.3 Quota Check
@@ -149,18 +149,18 @@ Before dispatching to Codex or Gemini:
 
 - Claude agents: TeamCreate protocol signals completion natively
 - Codex/Gemini: `tmux list-panes -F '#{pane_id} #{pane_dead}'` — pane_dead=1 means process exited
-- On completion: read `BEACON_RESULT.md` + `git diff` from worktree (not pane output)
+- On completion: read `AUTOSHIP_RESULT.md` + `git diff` from worktree (not pane output)
 
 ---
 
 ## 6. Post-Completion Pipeline
 
 ```
-Agent completes → writes BEACON_RESULT.md
+Agent completes → writes AUTOSHIP_RESULT.md
   ↓
 Step 1: VERIFY
   Sonnet reviewer agent:
-  - Read BEACON_RESULT.md
+  - Read AUTOSHIP_RESULT.md
   - Read git diff
   - Run test suite
   - Compare to acceptance criteria
@@ -178,7 +178,7 @@ Step 3: RE-VERIFY
   ↓ (FAIL → revert simplification, use pre-simplification code)
 
 Step 4: CREATE PR
-  gh pr create --label beacon
+  gh pr create --label autoship
   ↓
 
 Step 5: MONITOR
@@ -202,7 +202,7 @@ Step 6: CLEANUP
 
 ## 7. State Management
 
-### 7.1 Local State: `.beacon/state.json`
+### 7.1 Local State: `.autoship/state.json`
 
 ```json
 {
@@ -221,7 +221,7 @@ Step 6: CLEANUP
       "complexity": "simple|medium|complex",
       "agent": "claude-sonnet|claude-haiku|codex-spark|codex-gpt|gemini",
       "attempt": 1,
-      "worktree": ".beacon/workspaces/<key>",
+      "worktree": ".autoship/workspaces/<key>",
       "pane_id": "<tmux-pane-id>",
       "started_at": "ISO-8601",
       "attempts_history": []
@@ -244,10 +244,10 @@ Step 6: CLEANUP
 
 ### 7.2 GitHub Labels (Durable Recovery)
 
-- `beacon:in-progress` — agent working on it (color: yellow)
-- `beacon:blocked` — all agents failed, needs human review (color: red)
-- `beacon:paused` — orchestration halted, awaiting resume (color: orange)
-- `beacon:done` — completed and merged (color: green)
+- `autoship:in-progress` — agent working on it (color: yellow)
+- `autoship:blocked` — all agents failed, needs human review (color: red)
+- `autoship:paused` — orchestration halted, awaiting resume (color: orange)
+- `autoship:done` — completed and merged (color: green)
 
 Labels are created automatically on first run. On restart: reconcile local state with GitHub labels + PR status.
 
@@ -258,7 +258,7 @@ Labels are created automatically on first run. On restart: reconcile local state
 ### 8.1 Discord Webhooks (Real-Time)
 
 GitHub repo webhook → Discord channel → Claude Code session (--channels flag).
-Beacon parses the webhook embed to extract issue number and event type.
+AutoShip parses the webhook embed to extract issue number and event type.
 Triggers immediate dispatch evaluation.
 
 ### 8.2 Polling Safety Net (10-Minute Interval)
@@ -272,7 +272,7 @@ CronCreate fires every 10 minutes:
 
 ### 8.3 Discord Command Channel
 
-Beacon responds to Discord commands:
+AutoShip responds to Discord commands:
 
 - "work on #42" → immediate dispatch
 - "skip #15" → exclude from plan
@@ -317,26 +317,26 @@ Claude agents (Sonnet/Haiku) automatically invoke `/autoresearch:fix`:
 ## 12. Plugin Structure
 
 ```
-beacon/
+orchestrate/
 ├── .claude-plugin/
 │   ├── plugin.json
 │   └── marketplace.json
 ├── commands/
-│   ├── beacon.md               # /beacon:beacon (help)
-│   ├── start.md                # /beacon:start
-│   ├── stop.md                 # /beacon:stop
-│   └── plan.md                 # /beacon:plan
+│   ├── autoship.md               # /autoship:orchestrate (help)
+│   ├── start.md                # /autoship:start
+│   ├── stop.md                 # /autoship:stop
+│   └── plan.md                 # /autoship:plan
 ├── skills/
-│   ├── beacon/SKILL.md          # Core orchestration protocol
-│   ├── beacon-dispatch/SKILL.md # Agent dispatch logic
-│   ├── beacon-verify/SKILL.md   # Verification pipeline
-│   └── beacon-status/SKILL.md   # Status display
+│   ├── orchestrate/SKILL.md          # Core orchestration protocol
+│   ├── dispatch/SKILL.md # Agent dispatch logic
+│   ├── verify/SKILL.md   # Verification pipeline
+│   └── status/SKILL.md   # Status display
 ├── agents/
 │   ├── reviewer.md              # Sonnet verification reviewer
 │   └── monitor.md               # CI/PR monitor
 ├── README.md
 ├── LICENSE
-├── BEACON_SPEC.md               # This file
+├── AUTOSHIP_SPEC.md               # This file
 └── .gitignore
 ```
 
@@ -346,7 +346,7 @@ beacon/
 
 ### Session Restart
 
-1. Read `.beacon/state.json`
+1. Read `.autoship/state.json`
 2. Check tmux for surviving panes
 3. Poll GitHub for current issue/PR state
 4. Reconcile local state with GitHub labels
@@ -357,7 +357,7 @@ beacon/
 When the session hits the 80% compaction threshold:
 
 1. State file persists on disk (survives compaction)
-2. After compaction, re-read `.beacon/state.json`
+2. After compaction, re-read `.autoship/state.json`
 3. Resume orchestration without UltraPlan re-run (plan is in state file)
 
 ### Power Loss
@@ -370,7 +370,7 @@ When the session hits the 80% compaction threshold:
 
 ## 14. Security
 
-- Worktree paths must remain under `.beacon/workspaces/`
+- Worktree paths must remain under `.autoship/workspaces/`
 - Agent subprocess cwd must be the per-issue worktree path
 - Never log GitHub tokens or CLI credentials
 - Validate `gh auth status` before GitHub operations
@@ -384,7 +384,7 @@ When the session hits the 80% compaction threshold:
 ### M1: Foundation ✅ Complete
 
 - Plugin skeleton + marketplace registration
-- /beacon command + core skill
+- /autoship command + core skill
 - GitHub adapter (fetch issues, milestones, blockers)
 - Tool detection + quota checking
 - Git worktree manager
@@ -409,8 +409,8 @@ When the session hits the 80% compaction threshold:
 
 ### M4: Discord + Autoresearch 🔄 In Progress
 
-- Discord webhook event handling (skills/beacon-discord-webhook/) — in progress
-- Discord command channel (skills/beacon-discord-commands/) — in progress
+- Discord webhook event handling (skills/discord-webhook/) — in progress
+- Discord command channel (skills/discord-commands/) — in progress
 - Autoresearch integration ✅ (included in v3 dispatch skill)
 - Quota tracking refinement ✅ (detect-tools.sh Spark/GPT split)
 
@@ -419,5 +419,5 @@ When the session hits the 80% compaction threshold:
 - Status display with quota bars
 - Tmux grid layout optimization
 - Error recovery + edge cases
-- Run Beacon on its own repo with autoresearch
+- Run AutoShip on its own repo with autoresearch
 - Documentation + README badges

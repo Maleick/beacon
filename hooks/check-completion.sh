@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# check-completion.sh — Detect completed agent panes in the beacon tmux session.
+# check-completion.sh — Detect completed agent panes in the autoship tmux session.
 # Parses dead panes and extracts tool/issue-key from pane titles (format: "TOOL: issue-key").
 # Outputs JSON with completed pane info.
 
-# Check if beacon tmux session exists
-PANE_OUTPUT=$(tmux list-panes -t beacon -F '#{pane_id} #{pane_dead} #{pane_title}' 2>/dev/null) || {
+# Check if autoship tmux session exists
+PANE_OUTPUT=$(tmux list-panes -t autoship -F '#{pane_id} #{pane_dead} #{pane_title}' 2>/dev/null) || {
   echo '{"completed": []}'
   exit 0
 }

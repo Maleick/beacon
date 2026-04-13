@@ -6,9 +6,9 @@
 
 ---
 
-## `.beacon/state.json`
+## `.autoship/state.json`
 
-The primary runtime state file. Created by `hooks/beacon-init.sh`. Never edit directly — always use `hooks/update-state.sh`.
+The primary runtime state file. Created by `hooks/init.sh`. Never edit directly — always use `hooks/update-state.sh`.
 
 ```json
 {
@@ -34,7 +34,7 @@ The primary runtime state file. Created by `hooks/beacon-init.sh`. Never edit di
       "complexity": "simple",
       "agent": "codex-spark",
       "attempt": 1,
-      "worktree": ".beacon/workspaces/issue-42",
+      "worktree": ".autoship/workspaces/issue-42",
       "pane_id": "%3",
       "started_at": "2026-04-12T00:00:00Z",
       "attempts_history": []
@@ -72,7 +72,7 @@ The primary runtime state file. Created by `hooks/beacon-init.sh`. Never edit di
 
 ---
 
-## `.beacon/config.json`
+## `.autoship/config.json`
 
 Operator overrides. Created empty (`{}`) on first run. All fields optional.
 
@@ -98,7 +98,7 @@ Operator overrides. Created empty (`{}`) on first run. All fields optional.
 
 ---
 
-## `.beacon/event-queue.json`
+## `.autoship/event-queue.json`
 
 Producer-consumer event queue. Haiku writes, Sonnet reads. Initialized as `[]`.
 
@@ -133,23 +133,23 @@ Created automatically on first run in the target repo:
 
 | Label                | Color  | Meaning                          |
 | -------------------- | ------ | -------------------------------- |
-| `beacon:in-progress` | Yellow | Agent actively working           |
-| `beacon:blocked`     | Red    | Failed, needs human intervention |
-| `beacon:paused`      | Orange | Orchestration halted             |
-| `beacon:done`        | Green  | Completed and merged             |
+| `autoship:in-progress` | Yellow | Agent actively working           |
+| `autoship:blocked`     | Red    | Failed, needs human intervention |
+| `autoship:paused`      | Orange | Orchestration halted             |
+| `autoship:done`        | Green  | Completed and merged             |
 
-Labels are the **durable recovery layer** — if `.beacon/state.json` is lost or stale, GitHub labels are the source of truth.
+Labels are the **durable recovery layer** — if `.autoship/state.json` is lost or stale, GitHub labels are the source of truth.
 
 On restart:
 
-- `beacon:in-progress` + worktree exists → resume running
-- `beacon:in-progress` + no worktree → re-dispatch
-- `beacon:blocked` → restore blocked state, notify operator
-- `beacon:done` → verify PR was merged, clean up
+- `autoship:in-progress` + worktree exists → resume running
+- `autoship:in-progress` + no worktree → re-dispatch
+- `autoship:blocked` → restore blocked state, notify operator
+- `autoship:done` → verify PR was merged, clean up
 
 ---
 
-## `.beacon/discord-last-seen.json`
+## `.autoship/discord-last-seen.json`
 
 Tracks the last-processed Discord message timestamp to avoid reprocessing commands or webhook events.
 

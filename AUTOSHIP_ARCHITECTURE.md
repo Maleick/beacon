@@ -1,4 +1,4 @@
-# Beacon v3 Architecture — Advisor + Monitor Pattern
+# AutoShip v3 Architecture — Advisor + Monitor Pattern
 
 Status: **Locked** — Design decisions finalized
 Updated: 2026-04-12
@@ -7,7 +7,7 @@ Updated: 2026-04-12
 
 ## 1. Design Philosophy
 
-Beacon v3 inverts the orchestration model. Instead of Opus running a constant loop and spawning workers, **Sonnet is the executor** — it reacts to events, handles dispatch, and runs the pipeline. **Opus is the advisor** — called only at strategic decision points where higher intelligence changes the outcome.
+AutoShip v3 inverts the orchestration model. Instead of Opus running a constant loop and spawning workers, **Sonnet is the executor** — it reacts to events, handles dispatch, and runs the pipeline. **Opus is the advisor** — called only at strategic decision points where higher intelligence changes the outcome.
 
 This mirrors Anthropic's Advisor tool pattern (API beta `advisor-tool-2026-03-01`), adapted for the Claude Code plugin runtime using native Agent spawning and the Monitor tool.
 
@@ -48,7 +48,7 @@ Each tier operates in its optimal domain:
 
 - Haiku assigned to tasks classified as "simple" — 2-3 files with straightforward logic
 - Prompt quality matters more than model size for well-scoped tasks
-- Dispatch already generates detailed prompts with BEACON_RESULT.md templates and acceptance criteria
+- Dispatch already generates detailed prompts with AUTOSHIP_RESULT.md templates and acceptance criteria
 - Repetitive medium-complexity cross-file work excluded from Haiku to avoid subtle mistakes
 
 ### 2.2 Haiku Failure Escalation
@@ -106,7 +106,7 @@ Each Opus advisor call gets a focused prompt:
 You are Beacon's strategic advisor. Review the current state and provide a decision.
 
 ## Context
-<current state summary from .beacon/state.json>
+<current state summary from .autoship/state.json>
 <specific decision needed>
 
 ## Options
@@ -155,17 +155,17 @@ Instead of polling `pane_dead`, agents emit a final status word that Monitor det
 
 ```bash
 # tmux pipe-pane captures agent output to log file
-tmux pipe-pane -t "$PANE_ID" "cat >> .beacon/workspaces/$KEY/pane.log"
+tmux pipe-pane -t "$PANE_ID" "cat >> .autoship/workspaces/$KEY/pane.log"
 
 # Monitor tails the log for status keywords
-tail -f .beacon/workspaces/$KEY/pane.log | grep --line-buffered -E "^(COMPLETE|BLOCKED|STUCK)$"
+tail -f .autoship/workspaces/$KEY/pane.log | grep --line-buffered -E "^(COMPLETE|BLOCKED|STUCK)$"
 ```
 
 **Status vocabulary** (three words):
 
 | Status     | Meaning                                   | Next Action                   |
 | ---------- | ----------------------------------------- | ----------------------------- |
-| `COMPLETE` | Agent finished, BEACON_RESULT.md written  | Run verify pipeline           |
+| `COMPLETE` | Agent finished, AUTOSHIP_RESULT.md written  | Run verify pipeline           |
 | `BLOCKED`  | External dependency or permission issue   | Mark blocked, notify operator |
 | `STUCK`    | Agent attempted but cannot solve the task | Re-dispatch or escalate       |
 
@@ -173,12 +173,12 @@ The reviewer handles pass/fail granularity — agents only signal their own outc
 
 ### Third-Party Agent Completion
 
-**Decision: pane_dead + BEACON_RESULT.md existence check** (locked)
+**Decision: pane_dead + AUTOSHIP_RESULT.md existence check** (locked)
 
 Claude agents use TeamCreate with native completion signaling. Third-party tools (Codex/Gemini/Grok) run in tmux panes:
 
-- `pane_dead=1` + BEACON_RESULT.md exists → agent completed, run verify
-- `pane_dead=1` + no BEACON_RESULT.md → crash, flag for re-dispatch
+- `pane_dead=1` + AUTOSHIP_RESULT.md exists → agent completed, run verify
+- `pane_dead=1` + no AUTOSHIP_RESULT.md → crash, flag for re-dispatch
 - Exit codes from third-party CLIs are unreliable (may exit 0 on failure)
 
 ### Event Queue: Haiku Queues, Sonnet Pulls
@@ -186,7 +186,7 @@ Claude agents use TeamCreate with native completion signaling. Third-party tools
 **Decision: Producer-consumer pattern** (locked)
 
 ```
-Haiku (producer) → interprets raw events → writes to .beacon/event-queue.json
+Haiku (producer) → interprets raw events → writes to .autoship/event-queue.json
 Sonnet (consumer) → pulls next event after completing current pipeline step
 ```
 
@@ -200,7 +200,7 @@ Sonnet (consumer) → pulls next event after completing current pipeline step
 
 ```bash
 # Watch for agent status words via tmux pipe-pane logs
-for logfile in .beacon/workspaces/*/pane.log; do
+for logfile in .autoship/workspaces/*/pane.log; do
   tail -f "$logfile" | grep --line-buffered -E "^(COMPLETE|BLOCKED|STUCK)$" | \
     while read -r status; do
       key=$(basename "$(dirname "$logfile")")
@@ -233,7 +233,7 @@ done
 
 ```bash
 while true; do
-  gh pr list --label beacon --state open --json number,mergeable,statusCheckRollup 2>/dev/null | \
+  gh pr list --label autoship --state open --json number,mergeable,statusCheckRollup 2>/dev/null | \
     jq -r '.[] | "\(.number) \(.mergeable) \(.statusCheckRollup // [] | map(.conclusion) | join(","))"' | \
     while read -r num mergeable checks; do
       if echo "$checks" | grep -q "SUCCESS"; then
@@ -245,7 +245,7 @@ while true; do
         echo "[PR_CONFLICT] number=$num"
       fi
     done
-  gh pr list --label beacon --state merged --json number,mergedAt 2>/dev/null | \
+  gh pr list --label autoship --state merged --json number,mergedAt 2>/dev/null | \
     jq -r '.[] | "[PR_MERGED] number=\(.number)"'
   sleep 30
 done
@@ -259,7 +259,7 @@ Events arrive as Monitor notifications. Sonnet processes them sequentially:
 1. Bash Monitor fires: [AGENT_STATUS] key=issue-25 status=COMPLETE
 2. Haiku interprets: "Agent finished issue-25 successfully"
 3. Haiku queues: {type: "verify", issue: "issue-25", priority: 1}
-4. Sonnet pulls from queue → reads BEACON_RESULT.md → spawns reviewer
+4. Sonnet pulls from queue → reads AUTOSHIP_RESULT.md → spawns reviewer
 5. Reviewer returns PASS → Sonnet creates PR
 6. Sonnet pulls next event from queue
 ```
@@ -317,7 +317,7 @@ PR Monitor detects CI failure
 ```
 1. Sonnet validates environment (gh, tmux, git repo)
 2. Sonnet detects available tools + checks quota (hooks/detect-tools.sh)
-3. Sonnet loads .beacon/state.json or runs hooks/beacon-init.sh
+3. Sonnet loads .autoship/state.json or runs hooks/init.sh
 4. Sonnet fetches open issues via gh
 5. → ADVISOR CALL: Opus runs UltraPlan
    - Classifies complexity per issue
@@ -325,7 +325,7 @@ PR Monitor detects CI failure
    - Assigns tools based on complexity + quota
    - Plans dispatch phases
    - Returns: structured plan JSON
-6. Sonnet stores plan in .beacon/state.json
+6. Sonnet stores plan in .autoship/state.json
 7. Sonnet starts 3 persistent Monitors (agent, issue, PR watchers)
 8. Sonnet dispatches Phase 1 agents (third-party tools first)
 9. Sonnet enters reactive mode — pulls from event queue
@@ -341,12 +341,12 @@ Sonnet handles all dispatch. Third-party tools dispatched first when available.
 
 ```
 # If Codex/Gemini available with quota:
-tmux send-keys -t beacon:<pane> "codex --prompt-file .beacon/workspaces/$KEY/prompt.md" Enter
+tmux send-keys -t autoship:<pane> "codex --prompt-file .autoship/workspaces/$KEY/prompt.md" Enter
 
 # Fallback to Haiku:
 Agent({
   model: "haiku",
-  prompt: "<beacon worker prompt>",
+  prompt: "<autoship worker prompt>",
   mode: "auto"
 })
 ```
@@ -355,12 +355,12 @@ Agent({
 
 ```
 # If Codex/Gemini available with quota:
-tmux send-keys -t beacon:<pane> "codex --prompt-file .beacon/workspaces/$KEY/prompt.md" Enter
+tmux send-keys -t autoship:<pane> "codex --prompt-file .autoship/workspaces/$KEY/prompt.md" Enter
 
 # Fallback to Sonnet:
 Agent({
   model: "sonnet",
-  prompt: "<beacon worker prompt with autoresearch>",
+  prompt: "<autoship worker prompt with autoresearch>",
   mode: "auto"
 })
 ```
@@ -370,7 +370,7 @@ Agent({
 ```
 Agent({
   model: "sonnet",
-  prompt: "<beacon worker prompt with autoresearch + note: this is complex>",
+  prompt: "<autoship worker prompt with autoresearch + note: this is complex>",
   mode: "auto"
 })
 // After completion, Opus reviews the work before proceeding to PR
@@ -408,7 +408,7 @@ Summary of all finalized architecture decisions:
 | 3   | Monitor architecture        | 3 separate monitors (5s/30s/60s intervals)               |
 | 4   | Dispatch priority           | Third-party first for simple/medium, Claude for complex  |
 | 5   | Agent completion detection  | Real-time status words (COMPLETE/BLOCKED/STUCK)          |
-| 6   | Third-party completion      | pane_dead + BEACON_RESULT.md existence check             |
+| 6   | Third-party completion      | pane_dead + AUTOSHIP_RESULT.md existence check             |
 | 7   | Haiku + Monitor integration | Bash watches, Haiku interprets, Sonnet orchestrates      |
 | 8   | PR comment triage           | Haiku categorizes → nits/bugs/design → tiered resolution |
 | 9   | Event queue pattern         | Haiku queues events, Sonnet pulls after pipeline step    |

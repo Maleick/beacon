@@ -11,7 +11,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/beacon-activate.sh",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/activate.sh",
             "timeout": 15,
             "statusMessage": "Initializing AutoShip..."
           }

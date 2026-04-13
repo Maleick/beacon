@@ -50,9 +50,9 @@ check 3  '## Install'                                 # install heading
 check 2  '## Requirements|### Requirements'           # requirements listed
 
 # ── Commands table (8 pts) ──────────────────────────────────────────────────
-check 4  '/beacon:start'                              # start command documented
-check 2  '/beacon:plan'                               # plan command documented
-check 2  '/beacon:stop'                               # stop command documented
+check 4  '/autoship:start'                              # start command documented
+check 2  '/autoship:plan'                               # plan command documented
+check 2  '/autoship:stop'                               # stop command documented
 
 # ── How It Works / Architecture (16 pts) ────────────────────────────────────
 check 4  '## How It Works|## How it Works'            # how it works section

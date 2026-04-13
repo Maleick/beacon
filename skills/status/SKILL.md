@@ -1,27 +1,27 @@
 ---
-name: beacon-status
-description: Display current Beacon orchestration status — running agents, quota, progress, and issue states
+name: status
+description: Display current AutoShip orchestration status — running agents, quota, progress, and issue states
 tools: ["Bash", "Read"]
 ---
 
-# Beacon Status
+# AutoShip Status
 
-Display the current state of the Beacon orchestration session.
+Display the current state of the AutoShip orchestration session.
 
 ## Process
 
 ### Step 1: Read State File
 
 ```bash
-cat .beacon/state.json 2>/dev/null
+cat .autoship/state.json 2>/dev/null
 ```
 
-**If file is missing**: Display "No active Beacon session. Run `/autoship:start` to begin." and stop.
+**If file is missing**: Display "No active AutoShip session. Run `/autoship:start` to begin." and stop.
 
 Also read the quota file:
 
 ```bash
-cat .beacon/quota.json 2>/dev/null || echo '{}'
+cat .autoship/quota.json 2>/dev/null || echo '{}'
 ```
 
 `quota.json` has the structure:
@@ -54,16 +54,16 @@ where N comes from `state.json` → `stats.session_dispatched` (or `0` if not se
 BEACON STATUS: ERROR
 State file corrupted. Recovery options:
   1. Run `/autoship:start` to rebuild state from GitHub labels
-  2. Delete .beacon/state.json and restart
+  2. Delete .autoship/state.json and restart
 ```
 
 ### Step 2: Query Tmux
 
 ```bash
-tmux list-panes -t beacon -F '#{pane_id} #{pane_title} #{pane_dead} #{pane_start_command}' 2>/dev/null
+tmux list-panes -t autoship -F '#{pane_id} #{pane_title} #{pane_dead} #{pane_start_command}' 2>/dev/null
 ```
 
-**If tmux session doesn't exist**: Note "tmux session 'beacon' not found" — agents may have died. Show state file data only.
+**If tmux session doesn't exist**: Note "tmux session 'autoship' not found" — agents may have died. Show state file data only.
 
 ### Step 2.5: Fetch PR Counts
 
@@ -96,12 +96,12 @@ If `started_at` is missing, display `Uptime: unknown`.
 
 ### Step 5: Gather Token Usage
 
-Read token spend from `.beacon/token-ledger.json`. If the file is missing, display zeros for all models.
+Read token spend from `.autoship/token-ledger.json`. If the file is missing, display zeros for all models.
 
 **Get the current session ID:**
 
 ```bash
-SESSION_ID=$(jq -r '.sessions[-1].session_id' .beacon/token-ledger.json 2>/dev/null || echo "")
+SESSION_ID=$(jq -r '.sessions[-1].session_id' .autoship/token-ledger.json 2>/dev/null || echo "")
 ```
 
 **Per-model session totals** — aggregate `tokens_used` for each agent in the current session:
@@ -110,14 +110,14 @@ SESSION_ID=$(jq -r '.sessions[-1].session_id' .beacon/token-ledger.json 2>/dev/n
 jq -r --arg sid "$SESSION_ID" '
   .sessions[] | select(.session_id == $sid) |
   .issues[] | [.agent, (.tokens_used // 0)] | @tsv
-' .beacon/token-ledger.json 2>/dev/null \
+' .autoship/token-ledger.json 2>/dev/null \
   | awk '{sum[$1]+=$2} END {for(a in sum) print a, sum[a]}'
 ```
 
 **All-time total** — sum all `tokens_used` across every session:
 
 ```bash
-jq '[.sessions[].issues[].tokens_used // 0] | add // 0' .beacon/token-ledger.json 2>/dev/null || echo 0
+jq '[.sessions[].issues[].tokens_used // 0] | add // 0' .autoship/token-ledger.json 2>/dev/null || echo 0
 ```
 
 Store per-model counts keyed by agent name. Known models to always display (show `0` if no data):
@@ -198,7 +198,7 @@ Always display all five known models in this order: `codex-spark`, `codex-gpt`, 
 
 The `Session total` line sums all per-model session values. The `All-time total` line comes from the all-time aggregation query and includes all past sessions.
 
-If `.beacon/token-ledger.json` is missing, show all zeros:
+If `.autoship/token-ledger.json` is missing, show all zeros:
 
 ```
 ═══ Token Usage ══════════════════════════

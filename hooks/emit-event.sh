@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# emit-event.sh — Atomically append one event to .beacon/event-queue.json
+# emit-event.sh — Atomically append one event to .autoship/event-queue.json
 #
 # Usage:
 #   bash hooks/emit-event.sh '<json-event-object>'
@@ -17,8 +17,8 @@ set -euo pipefail
 
 EVENT="${1:?usage: emit-event.sh '<json-event-string>'}"
 REPO_ROOT="${BEACON_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo ".")}"
-QUEUE="${REPO_ROOT}/.beacon/event-queue.json"
-LOCK="${REPO_ROOT}/.beacon/event-queue.lock"
+QUEUE="${REPO_ROOT}/.autoship/event-queue.json"
+LOCK="${REPO_ROOT}/.autoship/event-queue.lock"
 
 # Ensure queue exists as a valid JSON array
 if [[ ! -f "$QUEUE" ]] || ! jq -e 'type == "array"' "$QUEUE" >/dev/null 2>&1; then

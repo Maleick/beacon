@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# sweep-stale.sh — Scan .beacon/workspaces for stale worktrees and clean them up.
+# sweep-stale.sh — Scan .autoship/workspaces for stale worktrees and clean them up.
 # A worktree is considered stale if its corresponding issue is in a terminal state
 # (merged, blocked, approved) and should be cleaned up automatically.
 
@@ -15,8 +15,8 @@ cd "$REPO_ROOT"
 # Resolve sibling scripts
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-WORKSPACES_DIR=".beacon/workspaces"
-STATE_FILE=".beacon/state.json"
+WORKSPACES_DIR=".autoship/workspaces"
+STATE_FILE=".autoship/state.json"
 
 # Check if workspaces directory exists
 if [[ ! -d "$WORKSPACES_DIR" ]]; then
@@ -58,13 +58,13 @@ is_pane_active() {
   tmux list-panes -a -F '#{pane_id}' 2>/dev/null | grep -q "^${pane_id}$"
 }
 
-LOG_FILE=".beacon/poll.log"
+LOG_FILE=".autoship/poll.log"
 
 # Iterate over worktree directories
 CLEANED_COUNT=0
 shopt -s nullglob
 for worktree_dir in "$WORKSPACES_DIR"/*/; do
-  # Extract issue key from directory name (e.g., ".beacon/workspaces/issue-16" → "issue-16")
+  # Extract issue key from directory name (e.g., ".autoship/workspaces/issue-16" → "issue-16")
   ISSUE_KEY=$(basename "$worktree_dir")
 
   # Check if this issue was already swept in this cycle; skip if so

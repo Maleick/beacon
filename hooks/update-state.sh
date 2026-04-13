@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# update-state.sh — Update .beacon/state.json for a given issue.
+# update-state.sh — Update .autoship/state.json for a given issue.
 # Usage: update-state.sh <action> <issue-id> [key=value ...]
 # Actions: set-claimed, set-running, set-verifying, set-completed, set-blocked, set-merged, set-failed, set-paused
 
-BEACON_DIR=".beacon"
-STATE_FILE="$BEACON_DIR/state.json"
-LEDGER_FILE="$BEACON_DIR/token-ledger.json"
+AUTOSHIP_DIR=".autoship"
+STATE_FILE="$AUTOSHIP_DIR/state.json"
+LEDGER_FILE="$AUTOSHIP_DIR/token-ledger.json"
 
 # Locate repo root
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
@@ -35,7 +35,7 @@ fi
 
 
 if [[ ! -f "$STATE_FILE" ]]; then
-  echo "Error: $STATE_FILE not found. Run beacon-init.sh first." >&2
+  echo "Error: $STATE_FILE not found. Run init.sh first." >&2
   exit 1
 fi
 
@@ -96,7 +96,7 @@ append_ledger_record() {
   local lock="${ledger%.json}.lock"
 
   if [[ ! -f "$ledger" ]]; then
-    # Ledger not created yet (beacon-init hasn't run with ledger support) — skip
+    # Ledger not created yet (init hasn't run with ledger support) — skip
     return 0
   fi
 
@@ -212,8 +212,8 @@ case "$ACTION" in
   set-running)
     NEW_STATE="running"
     STAT_KEY="dispatched"  # signals: increment session_dispatched + total_dispatched_all_time
-    ADD_LABEL="beacon:in-progress"
-    REMOVE_LABELS=("beacon:blocked" "beacon:paused" "beacon:done")
+    ADD_LABEL="autoship:in-progress"
+    REMOVE_LABELS=("autoship:blocked" "autoship:paused" "autoship:done")
     ;;
   set-verifying)
     NEW_STATE="verifying"
@@ -230,26 +230,26 @@ case "$ACTION" in
   set-blocked)
     NEW_STATE="blocked"
     STAT_KEY="blocked"
-    ADD_LABEL="beacon:blocked"
-    REMOVE_LABELS=("beacon:in-progress" "beacon:paused" "beacon:done")
+    ADD_LABEL="autoship:blocked"
+    REMOVE_LABELS=("autoship:in-progress" "autoship:paused" "autoship:done")
     ;;
   set-merged)
     NEW_STATE="merged"
     STAT_KEY="completed"  # signals: increment session_completed + total_completed_all_time
-    ADD_LABEL="beacon:done"
-    REMOVE_LABELS=("beacon:in-progress" "beacon:blocked" "beacon:paused")
+    ADD_LABEL="autoship:done"
+    REMOVE_LABELS=("autoship:in-progress" "autoship:blocked" "autoship:paused")
     ;;
   set-paused)
     NEW_STATE="paused"
     STAT_KEY=""
-    ADD_LABEL="beacon:paused"
+    ADD_LABEL="autoship:paused"
     REMOVE_LABELS=()
     ;;
   set-failed)
     NEW_STATE="blocked"
     STAT_KEY="failed"
-    ADD_LABEL="beacon:blocked"
-    REMOVE_LABELS=("beacon:in-progress" "beacon:paused" "beacon:done")
+    ADD_LABEL="autoship:blocked"
+    REMOVE_LABELS=("autoship:in-progress" "autoship:paused" "autoship:done")
     ;;
   *)
     echo "Error: unknown action '$ACTION'" >&2
@@ -365,7 +365,7 @@ for pair in "$@"; do
     if command -v gh >/dev/null 2>&1; then
       PR_ISSUE=$(gh pr view "$VALUE" --json body --jq '.body' 2>/dev/null | grep -o '#[0-9]*' | head -1 | tr -d '#')
       if [[ -n "$PR_ISSUE" && "$PR_ISSUE" != "$ISSUE_NUMBER" ]]; then
-        echo "WARN: PR #$VALUE body references #$PR_ISSUE but expected #$ISSUE_NUMBER — possible transposition" >> "$REPO_ROOT/.beacon/poll.log"
+        echo "WARN: PR #$VALUE body references #$PR_ISSUE but expected #$ISSUE_NUMBER — possible transposition" >> "$REPO_ROOT/.autoship/poll.log"
       fi
     fi
   fi

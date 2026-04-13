@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# monitor-agents.sh — Watch .beacon/workspaces/*/pane.log for agent status words.
+# monitor-agents.sh — Watch .autoship/workspaces/*/pane.log for agent status words.
 # Emits: [AGENT_STATUS] key=<issue-key> status=<COMPLETE|BLOCKED|STUCK>
 # Run via Monitor tool for real-time agent completion detection (5s response).
 
-BEACON_DIR=".beacon"
-WORKSPACE_DIR="$BEACON_DIR/workspaces"
-STATE_FILE="$BEACON_DIR/state.json"
+AUTOSHIP_DIR=".autoship"
+WORKSPACE_DIR="$AUTOSHIP_DIR/workspaces"
+STATE_FILE="$AUTOSHIP_DIR/state.json"
 
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
   echo "Error: not inside a git repository" >&2
@@ -19,13 +19,13 @@ check_dead_panes() {
   if ! command -v tmux >/dev/null 2>&1; then
     return
   fi
-  tmux list-panes -t beacon -F '#{pane_id} #{pane_dead} #{pane_title}' 2>/dev/null | \
+  tmux list-panes -t autoship -F '#{pane_id} #{pane_dead} #{pane_title}' 2>/dev/null | \
     while IFS=' ' read -r pane_id dead title; do
       if [[ "$dead" == "1" ]]; then
         # Parse issue key from pane title (format: "TOOL: issue-key")
         key=$(echo "$title" | sed -E 's/^[^:]+: //')
         if [[ -n "$key" && -d "$WORKSPACE_DIR/$key" ]]; then
-          if [[ -f "$WORKSPACE_DIR/$key/BEACON_RESULT.md" ]]; then
+          if [[ -f "$WORKSPACE_DIR/$key/AUTOSHIP_RESULT.md" ]]; then
             echo "[AGENT_DONE_FALLBACK] key=$key pane=$pane_id"
           else
             # Crash: no result file. Mark as failed and queue for re-dispatch.
@@ -38,7 +38,7 @@ check_dead_panes() {
             bash hooks/update-state.sh set-failed "$issue_num" 2>/dev/null || true
 
             # Write crash event to event queue (priority 1 = urgent)
-            EVENT_QUEUE="$BEACON_DIR/event-queue.json"
+            EVENT_QUEUE="$AUTOSHIP_DIR/event-queue.json"
             if [[ ! -f "$EVENT_QUEUE" ]]; then
               echo '[]' > "$EVENT_QUEUE"
             fi
@@ -50,7 +50,7 @@ check_dead_panes() {
 
             # Log to poll.log
             echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] monitor-agents: CRASH detected key=$key pane=$pane_id — marked failed, queued agent_crashed" \
-              >> "$BEACON_DIR/poll.log" 2>/dev/null || true
+              >> "$AUTOSHIP_DIR/poll.log" 2>/dev/null || true
           fi
         fi
       fi

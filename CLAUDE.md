@@ -24,17 +24,17 @@ Four-tier model: Bash watches → Haiku thinks → Sonnet orchestrates → Opus 
 - `commands/start.md` — `/autoship:start` launch orchestration
 - `commands/stop.md` — `/autoship:stop` graceful shutdown
 - `commands/plan.md` — `/autoship:plan` dry-run issue analysis
-- `skills/beacon/` — Core orchestration protocol (v3: Sonnet executor + Opus advisor)
-- `skills/beacon-dispatch/` — Agent dispatch (third-party first, pipe-pane, status words)
-- `skills/beacon-verify/` — Post-completion pipeline (verify, simplify, PR, merge)
-- `skills/beacon-status/` — Status display with quota bars
-- `skills/beacon-poll/` — GitHub issue sync safety net
+- `skills/orchestrate/` — Core orchestration protocol (v3: Sonnet executor + Opus advisor)
+- `skills/dispatch/` — Agent dispatch (third-party first, pipe-pane, status words)
+- `skills/verify/` — Post-completion pipeline (verify, simplify, PR, merge)
+- `skills/status/` — Status display with quota bars
+- `skills/poll/` — GitHub issue sync safety net
 - `agents/reviewer.md` — Sonnet verification reviewer
 - `agents/monitor.md` — CI/PR monitor agent
 - `agents/haiku-triage.md` — Haiku event interpreter (Monitor → event queue)
-- `hooks/beacon-init.sh` — Initialize `.beacon/` directory and state file
+- `hooks/init.sh` — Initialize `.autoship/` directory and state file
 - `hooks/detect-tools.sh` — Detect available AI CLI tools + quota
-- `hooks/update-state.sh` — Update `.beacon/state.json` issue states and stats
+- `hooks/update-state.sh` — Update `.autoship/state.json` issue states and stats
 - `hooks/monitor-agents.sh` — Agent completion watcher (5s, via Monitor tool)
 - `hooks/monitor-prs.sh` — PR CI/merge status watcher (30s, via Monitor tool)
 - `hooks/monitor-issues.sh` — GitHub issue new/closed watcher (60s, via Monitor tool)
@@ -58,11 +58,11 @@ Four-tier model: Bash watches → Haiku thinks → Sonnet orchestrates → Opus 
 ### Key conventions
 
 - Skills are markdown protocols, not code — they instruct Claude how to behave
-- All state persists in `.beacon/state.json` (local) and GitHub labels (durable)
-- Event queue in `.beacon/event-queue.json` — Haiku writes, Sonnet reads
+- All state persists in `.autoship/state.json` (local) and GitHub labels (durable)
+- Event queue in `.autoship/event-queue.json` — Haiku writes, Sonnet reads
 - Sonnet orchestrates; Opus is called only at strategic decision points
 - Every agent emits `COMPLETE`, `BLOCKED`, or `STUCK` as its final line
-- Every agent writes `BEACON_RESULT.md` — never trust conversation output
+- Every agent writes `AUTOSHIP_RESULT.md` — never trust conversation output
 
 ## Commands
 
@@ -73,4 +73,4 @@ Four-tier model: Bash watches → Haiku thinks → Sonnet orchestrates → Opus 
 | `/autoship:stop`   | Gracefully stop all agents            |
 | `/autoship:plan`   | Analyze issues without dispatching    |
 
-See BEACON_SPEC.md for the full specification.
+See AUTOSHIP_SPEC.md for the full specification.

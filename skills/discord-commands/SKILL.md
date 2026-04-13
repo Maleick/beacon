@@ -1,20 +1,20 @@
 ---
-name: beacon-discord-commands
-description: Read Discord for operator commands and execute them against Beacon state
+name: discord-commands
+description: Read Discord for operator commands and execute them against AutoShip state
 tools: ["Read", "Write", "Bash", "Skill"]
 ---
 
-# Beacon Discord Command Channel
+# AutoShip Discord Command Channel
 
-Poll Discord for operator commands and execute them against Beacon state. The orchestrator calls this skill on a timer (every 2 minutes). Each invocation fetches new messages, parses commands, executes them, and replies with acknowledgment.
+Poll Discord for operator commands and execute them against AutoShip state. The orchestrator calls this skill on a timer (every 2 minutes). Each invocation fetches new messages, parses commands, executes them, and replies with acknowledgment.
 
 ## Step 1: Load Last-Seen Timestamp
 
 Read the last-processed message timestamp to avoid reprocessing commands.
 
 ```bash
-if [ -f .beacon/discord-last-seen.json ]; then
-  LAST_SEEN=$(jq -r '.last_seen_id // ""' .beacon/discord-last-seen.json)
+if [ -f .autoship/discord-last-seen.json ]; then
+  LAST_SEEN=$(jq -r '.last_seen_id // ""' .autoship/discord-last-seen.json)
 else
   LAST_SEEN=""
 fi
@@ -57,7 +57,7 @@ Write a priority event to the event queue so Sonnet picks it up immediately:
 
 ```bash
 EVENT='{"type":"force_dispatch","issue":"'"$ISSUE_NUM"'","priority":1,"source":"discord","queued_at":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'"}'
-jq --argjson evt "$EVENT" '. += [$evt]' .beacon/event-queue.json > /tmp/eq.json && mv /tmp/eq.json .beacon/event-queue.json
+jq --argjson evt "$EVENT" '. += [$evt]' .autoship/event-queue.json > /tmp/eq.json && mv /tmp/eq.json .autoship/event-queue.json
 ```
 
 Reply to Discord:
@@ -70,13 +70,13 @@ Add the issue number to the exclusion list in state.json. If the issue has a run
 
 ```bash
 ISSUE_NUM="15"
-jq --arg n "$ISSUE_NUM" '.excluded_issues += [$n] | .excluded_issues |= unique' .beacon/state.json > /tmp/st.json && mv /tmp/st.json .beacon/state.json
+jq --arg n "$ISSUE_NUM" '.excluded_issues += [$n] | .excluded_issues |= unique' .autoship/state.json > /tmp/st.json && mv /tmp/st.json .autoship/state.json
 ```
 
 Check if the issue has a running agent:
 
 ```bash
-RUNNING=$(jq -r --arg n "$ISSUE_NUM" '.issues[$n] | select(.state == "running") | .pane_id // empty' .beacon/state.json)
+RUNNING=$(jq -r --arg n "$ISSUE_NUM" '.issues[$n] | select(.state == "running") | .pane_id // empty' .autoship/state.json)
 ```
 
 If a pane is found, the operator may want to cancel it — reply with context:
@@ -92,13 +92,13 @@ If no running agent:
 Set the paused flag in state.json:
 
 ```bash
-jq '.paused = true' .beacon/state.json > /tmp/st.json && mv /tmp/st.json .beacon/state.json
+jq '.paused = true' .autoship/state.json > /tmp/st.json && mv /tmp/st.json .autoship/state.json
 ```
 
 Count running agents to inform the operator:
 
 ```bash
-RUNNING_COUNT=$(jq '[.issues[] | select(.state == "running")] | length' .beacon/state.json)
+RUNNING_COUNT=$(jq '[.issues[] | select(.state == "running")] | length' .autoship/state.json)
 ```
 
 Reply:
@@ -110,13 +110,13 @@ Reply:
 Clear the paused flag:
 
 ```bash
-jq '.paused = false' .beacon/state.json > /tmp/st.json && mv /tmp/st.json .beacon/state.json
+jq '.paused = false' .autoship/state.json > /tmp/st.json && mv /tmp/st.json .autoship/state.json
 ```
 
 Read current phase to inform the operator:
 
 ```bash
-PHASE=$(jq -r '.current_phase // "1"' .beacon/state.json)
+PHASE=$(jq -r '.current_phase // "1"' .autoship/state.json)
 ```
 
 Reply:
@@ -159,10 +159,10 @@ If a command fails (e.g., invalid issue number, state.json write error):
 
 - Reply with the error: `Failed to execute: <reason>`
 - Do **not** halt processing of remaining commands — continue with the next message.
-- Log the error to `.beacon/discord-commands.log`:
+- Log the error to `.autoship/discord-commands.log`:
 
 ```bash
-echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) ERROR: $COMMAND - $REASON" >> .beacon/discord-commands.log
+echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) ERROR: $COMMAND - $REASON" >> .autoship/discord-commands.log
 ```
 
 ## Step 7: Update Last-Seen Timestamp
@@ -170,7 +170,7 @@ echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) ERROR: $COMMAND - $REASON" >> .beacon/disco
 After processing all messages, write the ID of the newest message to the tracking file:
 
 ```bash
-cat <<EOF > .beacon/discord-last-seen.json
+cat <<EOF > .autoship/discord-last-seen.json
 {
   "last_seen_id": "$NEWEST_MSG_ID",
   "last_poll": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"

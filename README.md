@@ -91,11 +91,11 @@ You come back to merged PRs.
 - **Third-party first** — burns Codex, Gemini, and Copilot quota before touching Claude tokens
 - **Parallel workers** — up to 6 issues in flight simultaneously
 - **Task-type routing** — classifies issues into 7 categories, routes each to the best agent
-- **Live routing config** — edit `BEACON.md` front matter to change agent priorities, takes effect immediately
+- **Live routing config** — edit `AUTOSHIP.md` front matter to change agent priorities, takes effect immediately
 - **Verification pipeline** — every result reviewed against acceptance criteria before a PR opens
-- **Token ledger** — per-issue and per-session token spend tracked in `.beacon/token-ledger.json`
+- **Token ledger** — per-issue and per-session token spend tracked in `.autoship/token-ledger.json`
 - **Event-driven** — bash monitors watch agent output, PR CI, and GitHub issues in real time
-- **Durable state** — survives restarts via `.beacon/state.json` and GitHub labels
+- **Durable state** — survives restarts via `.autoship/state.json` and GitHub labels
 
 ## Install
 
@@ -129,7 +129,7 @@ AutoShip detects available tools at startup and routes work accordingly.
 | ------------------ | ------------------------------------------------------------------------ |
 | `/autoship:start`  | Launch orchestration — classify issues, dispatch agents, loop until done |
 | `/autoship:plan`   | Dry run — analyze issues and show dispatch plan without executing        |
-| `/autoship:stop`   | Gracefully stop all agents, save state, add `beacon:paused` labels       |
+| `/autoship:stop`   | Gracefully stop all agents, save state, add `autoship:paused` labels       |
 | `/autoship:status` | Live dashboard — active agents, quota bars, per-model token spend        |
 
 ## How It Works
@@ -163,7 +163,7 @@ flowchart TD
     H --> I[Agent Works]
 
     I --> J{Status Word}
-    J -->|COMPLETE| K[Reviewer verifies\nBEACON_RESULT.md]
+    J -->|COMPLETE| K[Reviewer verifies\nAUTOSHIP_RESULT.md]
     J -->|BLOCKED\nSTUCK| L[Re-dispatch\nor Escalate]
 
     K -->|PASS| M[Open PR]
@@ -175,11 +175,11 @@ flowchart TD
     O --> B
 ```
 
-Every agent writes `BEACON_RESULT.md` and emits `COMPLETE`, `BLOCKED`, or `STUCK` as its final line. AutoShip never trusts conversation output — only the result file.
+Every agent writes `AUTOSHIP_RESULT.md` and emits `COMPLETE`, `BLOCKED`, or `STUCK` as its final line. AutoShip never trusts conversation output — only the result file.
 
 ## Dispatch Matrix
 
-Task type classification drives agent selection. Edit `BEACON.md` front matter to customize:
+Task type classification drives agent selection. Edit `AUTOSHIP.md` front matter to customize:
 
 | Task Type     | Primary Agent                | Fallback            | Last Resort   |
 | ------------- | ---------------------------- | ------------------- | ------------- |
@@ -223,7 +223,7 @@ Token counts from `thread/tokenUsage/updated` events feed directly into the toke
 
 After every agent reports COMPLETE, a dedicated Sonnet reviewer runs:
 
-1. Validates `BEACON_RESULT.md` exists and passes content check
+1. Validates `AUTOSHIP_RESULT.md` exists and passes content check
 2. Runs `git diff main...HEAD` to read the actual changes
 3. Checks every acceptance criterion against the diff
 4. Runs the test suite if one is detected
@@ -238,8 +238,8 @@ On FAIL: re-dispatches with failure context appended. After 2 fails: escalates t
 
 AutoShip keeps state in two places simultaneously:
 
-- **`.beacon/state.json`** — local, fast, rebuilt from GitHub labels on restart
-- **GitHub labels** — `beacon:queued`, `beacon:in-progress`, `beacon:paused` — durable, visible in the GitHub UI
+- **`.autoship/state.json`** — local, fast, rebuilt from GitHub labels on restart
+- **GitHub labels** — `autoship:queued`, `autoship:in-progress`, `autoship:paused` — durable, visible in the GitHub UI
 
 If you kill the session and restart, `/autoship:start` reads the labels and picks up where it left off.
 
@@ -280,7 +280,7 @@ flowchart LR
     H -->|"event-queue.json"| S
     S <-->|escalations| O
     S -->|dispatch| Workers
-    Workers -->|"BEACON_RESULT.md"| S
+    Workers -->|"AUTOSHIP_RESULT.md"| S
 ```
 
 | Tier     | Role                                                  | Model                   |
@@ -298,8 +298,8 @@ flowchart LR
   plugin.json         ← hooks + metadata
   marketplace.json    ← one-liner install target
 hooks/
-  beacon-activate.sh         ← SessionStart: init + system context injection
-  beacon-init.sh             ← .beacon/ directory structure
+  activate.sh         ← SessionStart: init + system context injection
+  init.sh             ← .autoship/ directory structure
   detect-tools.sh            ← detect Codex/Gemini/Copilot + quota
   monitor-agents.sh          ← watch pane.log for status words (5s)
   monitor-prs.sh             ← watch PR CI + merge status (30s)
@@ -311,17 +311,17 @@ hooks/
   dispatch-codex-appserver.sh← drive Codex via JSON-RPC (no tmux)
   emit-event.sh              ← atomic flock write to event-queue.json
 skills/
-  beacon/             ← orchestration protocol (v3)
-  beacon-dispatch/    ← agent dispatch (worktree, prompt, third-party first)
-  beacon-verify/      ← post-completion pipeline (verify, PR, merge)
-  beacon-status/      ← status dashboard with quota bars
-  beacon-poll/        ← GitHub issue sync safety net
+  orchestrate/             ← orchestration protocol (v3)
+  dispatch/           ← agent dispatch (worktree, prompt, third-party first)
+  verify/             ← post-completion pipeline (verify, PR, merge)
+  status/             ← status dashboard with quota bars
+  poll/               ← GitHub issue sync safety net
 agents/
   haiku-triage.md     ← event triage agent
   reviewer.md         ← verification reviewer
 commands/
   start.md / stop.md / plan.md / status.md / autoship.md
-BEACON.md             ← routing matrix + quota config (YAML front matter, hot-reload)
+AUTOSHIP.md             ← routing matrix + quota config (YAML front matter, hot-reload)
 ```
 
 ## Benchmarks
@@ -332,7 +332,7 @@ Real dispatch results from AutoShip running on its own codebase:
 | ------------------- | ---------------- | ----------------- | --------------------------------- |
 | Simple bug fix      | Codex Spark      | ~4 min            | JSON-RPC dispatch, no interaction |
 | Hook refactor       | Claude Haiku     | ~7 min            | 2 files changed, tests pass       |
-| Routing matrix feat | Claude Sonnet    | ~18 min           | BEACON.md + 3 hooks updated       |
+| Routing matrix feat | Claude Sonnet    | ~18 min           | AUTOSHIP.md + 3 hooks updated       |
 | Token ledger schema | Claude Sonnet    | ~12 min           | New JSON schema + recording logic |
 | Emit-event refactor | Claude Haiku     | ~5 min            | 4 files deduplicated              |
 | Archival bug fix    | Claude Sonnet    | ~9 min            | Content validation added          |

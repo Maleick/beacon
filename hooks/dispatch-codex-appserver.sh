@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # dispatch-codex-appserver.sh — Drive codex app-server via JSON-RPC (no tmux)
 # Usage: bash hooks/dispatch-codex-appserver.sh <issue-key> <prompt-file>
-# Emits COMPLETE or STUCK to .beacon/workspaces/<issue-key>/pane.log
-# Emits verify or agent_stuck event to .beacon/event-queue.json
+# Emits COMPLETE or STUCK to .autoship/workspaces/<issue-key>/pane.log
+# Emits verify or agent_stuck event to .autoship/event-queue.json
 
 set -euo pipefail
 
@@ -16,7 +16,7 @@ if [[ ! "$ISSUE_KEY" =~ ^issue-[0-9]+$ ]]; then
 fi
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-WORKSPACE="${REPO_ROOT}/.beacon/workspaces/${ISSUE_KEY}"
+WORKSPACE="${REPO_ROOT}/.autoship/workspaces/${ISSUE_KEY}"
 PANE_LOG="${WORKSPACE}/pane.log"
 
 STALL_SECS=$(( ${STALL_TIMEOUT_MS:-300000} / 1000 ))
@@ -62,7 +62,7 @@ exec 3>"$FIFO_IN"
 ) &
 WATCHDOG_PID=$!
 
-THREAD_ID="beacon-${ISSUE_KEY}-$$"
+THREAD_ID="autoship-${ISSUE_KEY}-$$"
 TOKENS_USED=0
 
 send_rpc() {
@@ -70,7 +70,7 @@ send_rpc() {
 }
 
 # Initialize
-send_rpc '{"jsonrpc":"2.0","method":"initialize","params":{"clientInfo":{"name":"beacon","version":"1.0.0"}},"id":1}'
+send_rpc '{"jsonrpc":"2.0","method":"initialize","params":{"clientInfo":{"name":"autoship","version":"1.0.0"}},"id":1}'
 
 # thread/start
 START_MSG=$(jq -n --arg tid "$THREAD_ID" \

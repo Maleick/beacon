@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# monitor-prs.sh — Watch Beacon PRs for CI status, conflicts, and merges.
+# monitor-prs.sh — Watch AutoShip PRs for CI status, conflicts, and merges.
 # Emits: [PR_CI_PASS], [PR_CI_FAIL], [PR_CONFLICT], [PR_MERGED]
 # Poll interval: 30 seconds (CI takes minutes; faster polling wastes API quota).
 
 set -euo pipefail
 
-BEACON_DIR=".beacon"
-STATE_FILE="$BEACON_DIR/state.json"
-SEEN_FILE="$BEACON_DIR/.pr-monitor-seen.json"
+AUTOSHIP_DIR=".autoship"
+STATE_FILE="$AUTOSHIP_DIR/state.json"
+SEEN_FILE="$AUTOSHIP_DIR/.pr-monitor-seen.json"
 
 # Temporary file for atomic seen-state updates — cleaned up on exit
 _SEEN_TMP=$(mktemp)
@@ -59,8 +59,8 @@ reset_pr_seen() {
 }
 
 while true; do
-  # Check open Beacon PRs for CI status and conflicts
-  gh pr list --label beacon --state open \
+  # Check open AutoShip PRs for CI status and conflicts
+  gh pr list --label autoship --state open \
     --json number,mergeable,statusCheckRollup \
     --repo "$REPO_SLUG" 2>/dev/null | \
     jq -c '.[] | {number: .number, mergeable: .mergeable, checks: (.statusCheckRollup // [])}' | \
@@ -89,8 +89,8 @@ while true; do
       fi
     done
 
-  # Check recently merged Beacon PRs (last 30s window)
-  gh pr list --label beacon --state merged \
+  # Check recently merged AutoShip PRs (last 30s window)
+  gh pr list --label autoship --state merged \
     --json number,mergedAt \
     --repo "$REPO_SLUG" 2>/dev/null | \
     jq -r '.[] | "\(.number) \(.mergedAt)"' | \

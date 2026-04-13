@@ -1,17 +1,17 @@
 ---
-name: beacon-poll
-description: 10-minute GitHub issue sync — diffs live issue state against .beacon/state.json, integrates new issues into the plan, cancels agents for closed issues, and updates changed issue metadata
+name: poll
+description: 10-minute GitHub issue sync — diffs live issue state against .autoship/state.json, integrates new issues into the plan, cancels agents for closed issues, and updates changed issue metadata
 tools: ["Bash", "Read", "Write"]
 ---
 
-# Beacon Poll Protocol
+# AutoShip Poll Protocol
 
-You are the Beacon polling safety net. You run every 10 minutes via CronCreate. Your job is to diff live GitHub issue state against `.beacon/state.json` and reconcile any drift.
+You are the AutoShip polling safety net. You run every 10 minutes via CronCreate. Your job is to diff live GitHub issue state against `.autoship/state.json` and reconcile any drift.
 
 ## Step 1: Load Known State
 
 ```bash
-cat .beacon/state.json
+cat .autoship/state.json
 ```
 
 Extract the `issues` map: each key is an issue number (as string), with `state`, `complexity`, `agent`, `pane_id`, and `worktree` fields.
@@ -24,32 +24,32 @@ Also note the `repo` field — you'll need it for `gh` calls.
 
 ```bash
 # Read current consecutive failure count (default 0 if not set)
-api_failures=$(jq -r '.consecutive_api_failures // 0' .beacon/state.json 2>/dev/null) || api_failures=0
+api_failures=$(jq -r '.consecutive_api_failures // 0' .autoship/state.json 2>/dev/null) || api_failures=0
 ```
 
 Fetch open issues:
 
 ```bash
-POLL_ERROR_TMP=$(mktemp .beacon/poll-error.XXXXXX.tmp)
+POLL_ERROR_TMP=$(mktemp .autoship/poll-error.XXXXXX.tmp)
 if live_issues=$(gh issue list --state open --json number,title,body,labels,updatedAt --limit 200 2>"$POLL_ERROR_TMP"); then
   # Reset failure counter on success
-  jq '.consecutive_api_failures = 0' .beacon/state.json > .beacon/state.tmp && mv .beacon/state.tmp .beacon/state.json
+  jq '.consecutive_api_failures = 0' .autoship/state.json > .autoship/state.tmp && mv .autoship/state.tmp .autoship/state.json
 else
   api_failures=$((api_failures + 1))
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] GitHub API error (attempt $api_failures): $(cat "$POLL_ERROR_TMP")" >> .beacon/poll.log
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] GitHub API error (attempt $api_failures): $(cat "$POLL_ERROR_TMP")" >> .autoship/poll.log
   echo "GitHub API error, will retry on next poll" >&2
 
   # Update consecutive failure counter in state
-  jq --argjson n "$api_failures" '.consecutive_api_failures = $n' .beacon/state.json \
-    > .beacon/state.tmp && mv .beacon/state.tmp .beacon/state.json
+  jq --argjson n "$api_failures" '.consecutive_api_failures = $n' .autoship/state.json \
+    > .autoship/state.tmp && mv .autoship/state.tmp .autoship/state.json
 
   # After 3 consecutive failures, write urgent event to queue
   if [[ "$api_failures" -ge 3 ]]; then
-    EVENT_QUEUE=".beacon/event-queue.json"
+    EVENT_QUEUE=".autoship/event-queue.json"
     [[ ! -f "$EVENT_QUEUE" ]] && echo '[]' > "$EVENT_QUEUE"
     jq '. + [{"type": "github_api_down", "consecutive_failures": '"$api_failures"', "priority": 1}]' \
       "$EVENT_QUEUE" > "${EVENT_QUEUE}.tmp" && mv "${EVENT_QUEUE}.tmp" "$EVENT_QUEUE"
-    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] github_api_down event queued after $api_failures consecutive failures" >> .beacon/poll.log
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] github_api_down event queued after $api_failures consecutive failures" >> .autoship/poll.log
   fi
 
   rm -f "$POLL_ERROR_TMP"
@@ -64,10 +64,10 @@ This returns all currently **open** issues. Store the result as `live_issues`.
 Also fetch recently closed issues (closed in the past 30 minutes) to catch external closures:
 
 ```bash
-POLL_CLOSED_TMP=$(mktemp .beacon/poll-error.XXXXXX.tmp)
+POLL_CLOSED_TMP=$(mktemp .autoship/poll-error.XXXXXX.tmp)
 if ! closed_issues=$(gh issue list --state closed --json number,title,labels,updatedAt,closedAt --limit 50 \
     | jq '[.[] | select(.closedAt > (now - 1800 | todate))]' 2>"$POLL_CLOSED_TMP"); then
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] GitHub API warning (closed issues fetch): $(cat "$POLL_CLOSED_TMP")" >> .beacon/poll.log
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] GitHub API warning (closed issues fetch): $(cat "$POLL_CLOSED_TMP")" >> .autoship/poll.log
   closed_issues='[]'  # Non-fatal — continue with empty closed list
 fi
 rm -f "$POLL_CLOSED_TMP"
@@ -75,33 +75,33 @@ rm -f "$POLL_CLOSED_TMP"
 
 ## Step 3: Diff Against Known State
 
-Build three lists by comparing `live_issues` against the `issues` map in `.beacon/state.json`:
+Build three lists by comparing `live_issues` against the `issues` map in `.autoship/state.json`:
 
 ### New Issues
 
-Issues in `live_issues` that are **not** present in `.beacon/state.json`.
+Issues in `live_issues` that are **not** present in `.autoship/state.json`.
 
 ```bash
 # Use jq for numeric-aware comparison — avoids lexicographic sort bugs (e.g. #100 before #9)
-new_issues=$(jq --argjson known "$(jq '[.issues | keys[] | ltrimstr("issue-") | tonumber]' .beacon/state.json)" \
+new_issues=$(jq --argjson known "$(jq '[.issues | keys[] | ltrimstr("issue-") | tonumber]' .autoship/state.json)" \
   '[.[] | .number | select(. as $n | $known | index($n) == null)]' <<< "$live_issues")
 ```
 
 ### Closed Issues
 
-Issues present in `.beacon/state.json` with `state` != `merged` or `blocked`, but **absent** from `live_issues` (i.e., closed externally).
+Issues present in `.autoship/state.json` with `state` != `merged` or `blocked`, but **absent** from `live_issues` (i.e., closed externally).
 
 ```bash
 jq -r '.issues | to_entries[] | select(.value.state | test("running|claimed|unclaimed|verifying|approved")) | .key' \
-  .beacon/state.json
+  .autoship/state.json
 # Cross-reference against live open issue numbers
 ```
 
 ### Changed Issues
 
-Issues in both `live_issues` and `.beacon/state.json` where `updatedAt` in GitHub is **newer** than the timestamp stored in local state (if tracked), or where labels have changed.
+Issues in both `live_issues` and `.autoship/state.json` where `updatedAt` in GitHub is **newer** than the timestamp stored in local state (if tracked), or where labels have changed.
 
-Compare label sets — look for additions or removals of `beacon:*` labels that would indicate out-of-band state changes.
+Compare label sets — look for additions or removals of `autoship:*` labels that would indicate out-of-band state changes.
 
 ## Step 4: Handle New Issues
 
@@ -130,7 +130,7 @@ Scan the issue body for:
 
 ### 4c. Add to Plan
 
-Append the new issue to `.beacon/state.json`:
+Append the new issue to `.autoship/state.json`:
 
 ```bash
 jq --arg num "<number>" \
@@ -147,7 +147,7 @@ jq --arg num "<number>" \
      discovered_by: "poll",
      started_at: null,
      attempts_history: []
-   }' .beacon/state.json > .beacon/state.tmp && mv .beacon/state.tmp .beacon/state.json
+   }' .autoship/state.json > .autoship/state.tmp && mv .autoship/state.tmp .autoship/state.json
 ```
 
 Determine which phase the issue belongs to (Phase 1 if no unresolved dependencies, otherwise after its blockers). Append to the appropriate phase in `plan.phases`.
@@ -158,11 +158,11 @@ For each issue that was closed externally:
 
 ### 5a. Check for Running Agent
 
-Read `.beacon/state.json` to get `pane_id` and `worktree` for the issue.
+Read `.autoship/state.json` to get `pane_id` and `worktree` for the issue.
 
 ```bash
-pane_id=$(jq -r --arg num "<number>" '.issues[$num].pane_id // empty' .beacon/state.json)
-worktree=$(jq -r --arg num "<number>" '.issues[$num].worktree // empty' .beacon/state.json)
+pane_id=$(jq -r --arg num "<number>" '.issues[$num].pane_id // empty' .autoship/state.json)
+worktree=$(jq -r --arg num "<number>" '.issues[$num].worktree // empty' .autoship/state.json)
 ```
 
 ### 5b. Kill Running Pane (if any)
@@ -193,13 +193,13 @@ fi
 jq --arg num "<number>" \
    '.issues[$num].state = "cancelled" |
     .issues[$num].cancelled_reason = "closed-externally"' \
-  .beacon/state.json > .beacon/state.tmp && mv .beacon/state.tmp .beacon/state.json
+  .autoship/state.json > .autoship/state.tmp && mv .autoship/state.tmp .autoship/state.json
 ```
 
-Remove the `beacon:in-progress` label from the issue if present:
+Remove the `autoship:in-progress` label from the issue if present:
 
 ```bash
-gh issue edit <number> --remove-label "beacon:in-progress" 2>/dev/null || true
+gh issue edit <number> --remove-label "autoship:in-progress" 2>/dev/null || true
 ```
 
 ## Step 6: Handle Changed Issues
@@ -208,18 +208,18 @@ For each changed issue (label changes or body updates):
 
 ### Label Reconciliation
 
-If a `beacon:*` label was **added** externally:
+If a `autoship:*` label was **added** externally:
 
-- `beacon:blocked` → update local state to `blocked`
-- `beacon:in-progress` → log discrepancy (we should already know about it)
+- `autoship:blocked` → update local state to `blocked`
+- `autoship:in-progress` → log discrepancy (we should already know about it)
 
-If a `beacon:*` label was **removed** externally:
+If a `autoship:*` label was **removed** externally:
 
-- `beacon:in-progress` removed → treat as cancellation signal, proceed as Step 5
+- `autoship:in-progress` removed → treat as cancellation signal, proceed as Step 5
 
 ### Metadata Update
 
-Update title, body, and labels in `.beacon/state.json`:
+Update title, body, and labels in `.autoship/state.json`:
 
 ```bash
 jq --arg num "<number>" \
@@ -228,7 +228,7 @@ jq --arg num "<number>" \
    '.issues[$num].title = $title |
     .issues[$num].labels = $labels |
     .issues[$num].last_synced = now | todate' \
-  .beacon/state.json > .beacon/state.tmp && mv .beacon/state.tmp .beacon/state.json
+  .autoship/state.json > .autoship/state.tmp && mv .autoship/state.tmp .autoship/state.json
 ```
 
 ## Step 7: Refresh Quota Estimates
@@ -236,7 +236,7 @@ jq --arg num "<number>" \
 Run the daily refresh check — this auto-resets any tool whose quota crossed midnight (subscription tools renew daily):
 
 ```bash
-bash "$(cat .beacon/hooks_dir)/quota-update.sh" refresh
+bash "$(cat .autoship/hooks_dir)/quota-update.sh" refresh
 ```
 
 This is a no-op if all tools were already reset today. No API calls made.
@@ -248,26 +248,26 @@ Update `updated_at` and `last_poll` in state:
 ```bash
 jq --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
    '.updated_at = $ts | .last_poll = $ts' \
-  .beacon/state.json > .beacon/state.tmp && mv .beacon/state.tmp .beacon/state.json
+  .autoship/state.json > .autoship/state.tmp && mv .autoship/state.tmp .autoship/state.json
 ```
 
-Write a summary to `.beacon/poll.log`:
+Write a summary to `.autoship/poll.log`:
 
 ```bash
-cat >> .beacon/poll.log <<EOF
+cat >> .autoship/poll.log <<EOF
 [$(date -u +%Y-%m-%dT%H:%M:%SZ)] Poll complete
   New issues:    <count> (<numbers>)
   Closed issues: <count> (<numbers>)
   Changed issues: <count> (<numbers>)
   Active agents:  <count>
-  State file:     .beacon/state.json
+  State file:     .autoship/state.json
 EOF
 ```
 
 Keep the log bounded — trim to the last 500 lines:
 
 ```bash
-tail -500 .beacon/poll.log > .beacon/poll.log.tmp && mv .beacon/poll.log.tmp .beacon/poll.log
+tail -500 .autoship/poll.log > .autoship/poll.log.tmp && mv .autoship/poll.log.tmp .autoship/poll.log
 ```
 
 ## Output

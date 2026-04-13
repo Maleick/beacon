@@ -32,7 +32,7 @@ GitHub Issues / PRs / Agent completions
   └── monitor-issues.sh  — 60s poll, new/closed issues
         ↓
   Haiku Triage Agent
-  └── Interprets raw events → writes to .beacon/event-queue.json
+  └── Interprets raw events → writes to .autoship/event-queue.json
         ↓
   Sonnet Orchestrator
   └── Pulls from queue → runs pipeline → dispatches agents
@@ -61,13 +61,13 @@ Agents emit a status word as their final output line:
 
 | Word       | Meaning                                   | Next action             |
 | ---------- | ----------------------------------------- | ----------------------- |
-| `COMPLETE` | Work done, `BEACON_RESULT.md` written     | Run verify pipeline     |
+| `COMPLETE` | Work done, `AUTOSHIP_RESULT.md` written     | Run verify pipeline     |
 | `BLOCKED`  | External blocker (permission, dependency) | Mark blocked, notify    |
 | `STUCK`    | Agent attempted but cannot solve the task | Re-dispatch or escalate |
 
-`monitor-agents.sh` pipes tmux pane output to `.beacon/workspaces/<key>/pane.log` and tails it for these words in real-time — no polling delay.
+`monitor-agents.sh` pipes tmux pane output to `.autoship/workspaces/<key>/pane.log` and tails it for these words in real-time — no polling delay.
 
-For third-party agents (Codex/Gemini/Grok): `pane_dead=1` + `BEACON_RESULT.md` exists = COMPLETE. `pane_dead=1` + no file = crash, re-dispatch.
+For third-party agents (Codex/Gemini/Grok): `pane_dead=1` + `AUTOSHIP_RESULT.md` exists = COMPLETE. `pane_dead=1` + no file = crash, re-dispatch.
 
 ---
 
@@ -104,7 +104,7 @@ Sonnet can also escalate to Opus for ambiguous scope, conflicting acceptance cri
 
 ```
 COMPLETE signal received
-  → Read BEACON_RESULT.md + git diff
+  → Read AUTOSHIP_RESULT.md + git diff
   → Spawn Sonnet reviewer (agents/reviewer.md)
   → PASS: spawn Sonnet simplifier → re-verify → create PR
   → FAIL (attempt 1): re-dispatch with failure context
@@ -121,8 +121,8 @@ COMPLETE signal received
 
 | Layer              | Location                   | Survives restart? |
 | ------------------ | -------------------------- | ----------------- |
-| Orchestration plan | `.beacon/state.json`       | Yes (disk)        |
-| Event queue        | `.beacon/event-queue.json` | Yes (disk)        |
+| Orchestration plan | `.autoship/state.json`       | Yes (disk)        |
+| Event queue        | `.autoship/event-queue.json` | Yes (disk)        |
 | Agent labels       | GitHub labels on issues    | Yes (GitHub)      |
 | Pane state         | tmux (in-memory)           | No                |
 | Monitor processes  | tmux / Monitor tool        | No — restart them |
@@ -134,21 +134,21 @@ On session restart: read state.json, reconcile GitHub labels, re-initialize even
 ## File Map
 
 ```
-beacon/
+orchestrate/
   skills/
-    beacon/SKILL.md                 Sonnet executor + Opus advisor protocol
-    beacon-dispatch/SKILL.md        Dispatch (third-party first, pipe-pane)
-    beacon-verify/SKILL.md          Verify → simplify → PR pipeline
-    beacon-status/SKILL.md          /beacon:status display
-    beacon-poll/SKILL.md            GitHub issue sync (safety net)
-    beacon-discord-webhook/SKILL.md Parse GitHub webhook embeds from Discord
-    beacon-discord-commands/SKILL.md Operator control via Discord
+    orchestrate/SKILL.md                 Sonnet executor + Opus advisor protocol
+    dispatch/SKILL.md        Dispatch (third-party first, pipe-pane)
+    verify/SKILL.md          Verify → simplify → PR pipeline
+    status/SKILL.md          /autoship:status display
+    poll/SKILL.md            GitHub issue sync (safety net)
+    discord-webhook/SKILL.md Parse GitHub webhook embeds from Discord
+    discord-commands/SKILL.md Operator control via Discord
   agents/
     reviewer.md                     Sonnet verification agent
     monitor.md                      CI/PR watcher agent
     haiku-triage.md                 Haiku event interpreter
   hooks/
-    beacon-init.sh                  Initialize .beacon/ workspace
+    init.sh                  Initialize .autoship/ workspace
     detect-tools.sh                 Detect AI CLIs + quota
     update-state.sh                 State machine transitions + GitHub labels
     monitor-agents.sh               Agent completion watcher (5s)

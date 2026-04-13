@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# beacon-init.sh — Initialize .beacon/ directory structure and state file.
+# init.sh — Initialize .autoship/ directory structure and state file.
 # Idempotent: safe to re-run without losing existing state.
 
-BEACON_VERSION="0.1.0"
+AUTOSHIP_VERSION="0.1.0"
 
-BEACON_DIR=".beacon"
-STATE_FILE="$BEACON_DIR/state.json"
-WORKSPACES_DIR="$BEACON_DIR/workspaces"
-LEDGER_FILE="$BEACON_DIR/token-ledger.json"
+AUTOSHIP_DIR=".autoship"
+STATE_FILE="$AUTOSHIP_DIR/state.json"
+WORKSPACES_DIR="$AUTOSHIP_DIR/workspaces"
+LEDGER_FILE="$AUTOSHIP_DIR/token-ledger.json"
 
 # Resolve the directory this script lives in so we can call sibling scripts.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -21,7 +21,7 @@ REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
 }
 cd "$REPO_ROOT"
 
-echo "Beacon v${BEACON_VERSION} initializing..."
+echo "AutoShip v${AUTOSHIP_VERSION} initializing..."
 
 # Check for jq dependency and minimum version (>= 1.6 required for --argjson)
 if ! command -v jq >/dev/null 2>&1; then
@@ -79,7 +79,7 @@ TOOLS_JSON=$(printf '%s' "$TOOLS_RAW" | jq '
   }'
 
 # Initialize quota.json if it doesn't exist (creates decay-tracking file for third-party tools)
-if [[ ! -f "$BEACON_DIR/quota.json" ]]; then
+if [[ ! -f "$AUTOSHIP_DIR/quota.json" ]]; then
   bash "$SCRIPT_DIR/quota-update.sh" init 2>/dev/null || true
 fi
 
@@ -100,11 +100,11 @@ if [[ ! -f "$STATE_FILE" ]]; then
   jq -n \
     --arg repo "$REPO_SLUG" \
     --arg now "$NOW" \
-    --arg ver "$BEACON_VERSION" \
+    --arg ver "$AUTOSHIP_VERSION" \
     --argjson tools "$TOOLS_JSON" \
     '{
       version: 1,
-      beacon_version: $ver,
+      autoship_version: $ver,
       repo: $repo,
       started_at: $now,
       updated_at: $now,
@@ -127,9 +127,9 @@ if [[ ! -f "$STATE_FILE" ]]; then
   echo "Initialized $STATE_FILE"
 else
   # Check for version mismatch and warn (migration notice, non-fatal)
-  existing_ver=$(jq -r '.beacon_version // "unknown"' "$STATE_FILE" 2>/dev/null) || existing_ver="unknown"
-  if [[ "$existing_ver" != "$BEACON_VERSION" ]]; then
-    echo "Notice: state.json has beacon_version=${existing_ver}, current is ${BEACON_VERSION} (migration may be needed)" >&2
+  existing_ver=$(jq -r '.autoship_version // "unknown"' "$STATE_FILE" 2>/dev/null) || existing_ver="unknown"
+  if [[ "$existing_ver" != "$AUTOSHIP_VERSION" ]]; then
+    echo "Notice: state.json has autoship_version=${existing_ver}, current is ${AUTOSHIP_VERSION} (migration may be needed)" >&2
   fi
 
   # Refresh tools section with current quota data without touching other state.
@@ -155,7 +155,7 @@ else
 fi
 
 # Create config.json for operator overrides (if not present)
-CONFIG_FILE="$BEACON_DIR/config.json"
+CONFIG_FILE="$AUTOSHIP_DIR/config.json"
 if [[ ! -f "$CONFIG_FILE" ]]; then
   echo '{}' > "$CONFIG_FILE"
   echo "Initialized $CONFIG_FILE (add test_command, etc. for overrides)"
@@ -163,7 +163,7 @@ fi
 
 # --- Token Ledger: create + append new session entry ---
 init_token_ledger() {
-  local ledger="$BEACON_DIR/token-ledger.json"
+  local ledger="$AUTOSHIP_DIR/token-ledger.json"
   local lock="${ledger%.json}.lock"
   local now
   now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -242,13 +242,13 @@ create_github_labels() {
   fi
 
   # Create each label if it doesn't exist (bash 3.2 compatible — no associative arrays)
-  local pairs="beacon:in-progress=FFEB3B beacon:blocked=F44336 beacon:paused=FF9800 beacon:done=4CAF50"
+  local pairs="autoship:in-progress=FFEB3B autoship:blocked=F44336 autoship:paused=FF9800 autoship:done=4CAF50"
   for pair in $pairs; do
     label="${pair%%=*}"
     color="${pair#*=}"
     if ! gh label list --repo "$REPO_SLUG" --json name --jq ".[].name" 2>/dev/null | grep -q "^${label}$"; then
       echo "Creating label: $label (color: $color)"
-      gh label create "$label" --repo "$REPO_SLUG" --color "$color" --description "Beacon orchestration label" 2>/dev/null || true
+      gh label create "$label" --repo "$REPO_SLUG" --color "$color" --description "AutoShip orchestration label" 2>/dev/null || true
     fi
   done
 }
@@ -302,7 +302,7 @@ reconcile_stale_running() {
       # Extract numeric issue ID from key (e.g. "issue-42" → 42)
       local issue_num="${key#issue-}"
       if gh issue view "$issue_num" --repo "$REPO_SLUG" --json labels \
-          --jq '.labels[].name' 2>/dev/null | grep -q "^beacon:in-progress$"; then
+          --jq '.labels[].name' 2>/dev/null | grep -q "^autoship:in-progress$"; then
         has_inprogress_label=1
       fi
     fi
@@ -317,7 +317,7 @@ reconcile_stale_running() {
     trap 'rm -f "${state_tmp:-}"' RETURN
     if [[ $has_inprogress_label -eq 1 ]]; then
       # Agent may be running in a different session — preserve state but clear dead pane ref
-      echo "  $key: beacon:in-progress label present — preserving running state, clearing pane_id"
+      echo "  $key: autoship:in-progress label present — preserving running state, clearing pane_id"
       jq --arg k "$key" '.issues[$k].pane_id = null' "$STATE_FILE" > "$state_tmp" \
         && mv "$state_tmp" "$STATE_FILE"
     else
@@ -365,15 +365,15 @@ check_available_never_dispatched() {
     tool_dispatches=$(jq -r --arg t "$tool" '.issues | to_entries[] | select(.value.agent == $t) | length' "$STATE_FILE" 2>/dev/null | wc -l) || tool_dispatches=0
 
     if (( tool_dispatches == 0 )); then
-      echo "WARN: $tool available but never dispatched (${total_dispatches} total dispatches) — check CLI" >> "$BEACON_DIR/poll.log"
+      echo "WARN: $tool available but never dispatched (${total_dispatches} total dispatches) — check CLI" >> "$AUTOSHIP_DIR/poll.log"
     fi
   done
 }
 
 check_available_never_dispatched || true
 
-# --- Routing Config: parse BEACON.md front matter and write .beacon/routing.json ---
-# Default routing matrix used when BEACON.md is absent or YAML is malformed.
+# --- Routing Config: parse AUTOSHIP.md front matter and write .autoship/routing.json ---
+# Default routing matrix used when AUTOSHIP.md is absent or YAML is malformed.
 DEFAULT_ROUTING='{
   "routing": {
     "research":     ["gemini", "claude-haiku"],
@@ -390,23 +390,23 @@ DEFAULT_ROUTING='{
 }'
 
 load_routing_config() {
-  local routing_file="$BEACON_DIR/routing.json"
-  local beacon_md="BEACON.md"
+  local routing_file="$AUTOSHIP_DIR/routing.json"
+  local autoship_md="AUTOSHIP.md"
 
-  # If BEACON.md is absent, write the default and return.
-  if [[ ! -f "$beacon_md" ]]; then
+  # If AUTOSHIP.md is absent, write the default and return.
+  if [[ ! -f "$autoship_md" ]]; then
     printf '%s\n' "$DEFAULT_ROUTING" > "$routing_file"
-    echo "routing.json initialized with defaults (BEACON.md not found)"
+    echo "routing.json initialized with defaults (AUTOSHIP.md not found)"
     return 0
   fi
 
   # Extract YAML front matter (content between the first pair of --- markers).
   local front_matter
-  front_matter=$(awk '/^---$/{if(p){exit}else{p=1;next}} p{print}' "$beacon_md" 2>/dev/null) || front_matter=""
+  front_matter=$(awk '/^---$/{if(p){exit}else{p=1;next}} p{print}' "$autoship_md" 2>/dev/null) || front_matter=""
 
   if [[ -z "$front_matter" ]]; then
     printf '%s\n' "$DEFAULT_ROUTING" > "$routing_file"
-    echo "routing.json initialized with defaults (no front matter in BEACON.md)" >&2
+    echo "routing.json initialized with defaults (no front matter in AUTOSHIP.md)" >&2
     return 0
   fi
 
@@ -486,7 +486,7 @@ PYEOF
   # Validate parsed result — must have a non-empty routing object.
   if [[ -z "$parsed" ]] || ! printf '%s' "$parsed" | jq -e '.routing | length > 0' >/dev/null 2>&1; then
     printf '%s\n' "$DEFAULT_ROUTING" > "$routing_file"
-    echo "routing.json initialized with defaults (BEACON.md front matter parse failed)" >&2
+    echo "routing.json initialized with defaults (AUTOSHIP.md front matter parse failed)" >&2
     return 0
   fi
 
@@ -504,16 +504,16 @@ PYEOF
     ' 2>/dev/null) || merged="$DEFAULT_ROUTING"
 
   printf '%s\n' "$merged" > "$routing_file"
-  echo "routing.json loaded from BEACON.md front matter"
+  echo "routing.json loaded from AUTOSHIP.md front matter"
 }
 
 load_routing_config || true
 
 # Write hooks_dir so skills can locate sibling hooks without relative paths.
-echo "$SCRIPT_DIR" > "$BEACON_DIR/hooks_dir"
+echo "$SCRIPT_DIR" > "$AUTOSHIP_DIR/hooks_dir"
 
 # Sweep stale worktrees on startup (non-fatal if it fails)
 echo "Scanning for stale worktrees..."
 bash "$SCRIPT_DIR/sweep-stale.sh" 2>/dev/null || true
 
-echo "AutoShip workspace ready at $BEACON_DIR"
+echo "AutoShip workspace ready at $AUTOSHIP_DIR"

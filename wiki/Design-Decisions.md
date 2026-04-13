@@ -60,11 +60,11 @@ All locked architectural decisions with rationale. These were finalized during t
 
 ## Decision 6: Third-Party Agent Completion
 
-**Choice:** `pane_dead=1` + `BEACON_RESULT.md` existence check
+**Choice:** `pane_dead=1` + `AUTOSHIP_RESULT.md` existence check
 
 **Rejected:** Exit codes only, exit codes + pane_dead + file check
 
-**Rationale:** Exit codes from third-party CLIs are unreliable — they may return 0 even on failure. `BEACON_RESULT.md` serves as the agent completion contract: if the file exists when the pane dies, the agent believes it finished successfully. If missing, something went wrong mid-execution. This provides a tool-agnostic, reliable completion signal.
+**Rationale:** Exit codes from third-party CLIs are unreliable — they may return 0 even on failure. `AUTOSHIP_RESULT.md` serves as the agent completion contract: if the file exists when the pane dies, the agent believes it finished successfully. If missing, something went wrong mid-execution. This provides a tool-agnostic, reliable completion signal.
 
 ---
 
@@ -118,8 +118,8 @@ All locked architectural decisions with rationale. These were finalized during t
 
 | #     | Decision         | Choice                                                      |
 | ----- | ---------------- | ----------------------------------------------------------- |
-| v2-3  | Result capture   | BEACON_RESULT.md per worktree + git diff                    |
-| v2-4  | State management | .beacon/state.json (local) + GitHub labels (durable)        |
+| v2-3  | Result capture   | AUTOSHIP_RESULT.md per worktree + git diff                    |
+| v2-4  | State management | .autoship/state.json (local) + GitHub labels (durable)        |
 | v2-5  | Verification     | Dedicated Sonnet reviewer agent                             |
 | v2-7  | Post-completion  | verify → simplify → verify → PR → monitor CI → cleanup      |
 | v2-8  | Autoresearch     | Automatic for Claude Sonnet/complex agents only             |

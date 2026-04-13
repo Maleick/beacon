@@ -29,14 +29,14 @@ cd "$REPO_ROOT"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Paths
-WORKTREE_PATH=".beacon/workspaces/$ISSUE_KEY"
-BEACON_BRANCH="beacon/$ISSUE_KEY"
+WORKTREE_PATH=".autoship/workspaces/$ISSUE_KEY"
+AUTOSHIP_BRANCH="autoship/$ISSUE_KEY"
 ISSUE_NUM="${ISSUE_KEY#issue-}"
 
 # Resolve repo slug from state.json or git remote (needed for archive and GitHub cleanup)
 REPO_SLUG=""
-if [[ -f ".beacon/state.json" ]]; then
-  REPO_SLUG=$(jq -r '.repo // empty' ".beacon/state.json" 2>/dev/null) || true
+if [[ -f ".autoship/state.json" ]]; then
+  REPO_SLUG=$(jq -r '.repo // empty' ".autoship/state.json" 2>/dev/null) || true
 fi
 if [[ -z "$REPO_SLUG" ]]; then
   REMOTE_URL=$(git remote get-url origin 2>/dev/null) || true
@@ -45,12 +45,12 @@ if [[ -z "$REPO_SLUG" ]]; then
   fi
 fi
 
-# Archive BEACON_RESULT.md before removing worktree
-RESULT_FILE="$WORKTREE_PATH/BEACON_RESULT.md"
+# Archive AUTOSHIP_RESULT.md before removing worktree
+RESULT_FILE="$WORKTREE_PATH/AUTOSHIP_RESULT.md"
 # Fallback: Phase-1 / no-worktree agents write to the repo root
-if [[ ! -f "$RESULT_FILE" ]] && [[ -f "BEACON_RESULT.md" ]]; then
-  echo "Warning: BEACON_RESULT.md not found in worktree, falling back to repo root" >> .beacon/poll.log
-  RESULT_FILE="BEACON_RESULT.md"
+if [[ ! -f "$RESULT_FILE" ]] && [[ -f "AUTOSHIP_RESULT.md" ]]; then
+  echo "Warning: AUTOSHIP_RESULT.md not found in worktree, falling back to repo root" >> .autoship/poll.log
+  RESULT_FILE="AUTOSHIP_RESULT.md"
 fi
 # Validate — must start with "# Result: #<N>"
 _VALID_RESULT=false
@@ -58,20 +58,20 @@ if [[ -f "$RESULT_FILE" ]]; then
   if head -1 "$RESULT_FILE" | grep -qE '^# Result: #[0-9]+'; then
     _VALID_RESULT=true
   else
-    echo "Warning: $RESULT_FILE failed content validation (first line: $(head -1 "$RESULT_FILE"))" >> .beacon/poll.log
-    echo "Warning: skipping archival for $ISSUE_KEY — BEACON_RESULT.md content invalid" >&2
+    echo "Warning: $RESULT_FILE failed content validation (first line: $(head -1 "$RESULT_FILE"))" >> .autoship/poll.log
+    echo "Warning: skipping archival for $ISSUE_KEY — AUTOSHIP_RESULT.md content invalid" >&2
   fi
 fi
 if [[ "$_VALID_RESULT" == "true" ]]; then
-  mkdir -p .beacon/results
+  mkdir -p .autoship/results
   ISSUE_TITLE=""
   if command -v gh >/dev/null 2>&1 && [[ -n "$REPO_SLUG" ]]; then
     ISSUE_TITLE=$(gh issue view "$ISSUE_NUM" --repo "$REPO_SLUG" --json title --jq '.title' 2>/dev/null) || ISSUE_TITLE=""
   fi
   SLUG=$(echo "$ISSUE_TITLE" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/-*$//' | cut -c1-40)
   ARCHIVE_NAME="${ISSUE_NUM}${SLUG:+-${SLUG}}.md"
-  cp "$RESULT_FILE" ".beacon/results/${ARCHIVE_NAME}"
-  echo "Archived BEACON_RESULT.md to .beacon/results/${ARCHIVE_NAME}"
+  cp "$RESULT_FILE" ".autoship/results/${ARCHIVE_NAME}"
+  echo "Archived AUTOSHIP_RESULT.md to .autoship/results/${ARCHIVE_NAME}"
 fi
 
 # Check if worktree exists
@@ -85,22 +85,22 @@ else
   }
 fi
 
-# Check if beacon branch exists locally
-if git rev-parse --verify "$BEACON_BRANCH" >/dev/null 2>&1; then
-  echo "Deleting local branch $BEACON_BRANCH"
-  git branch -D "$BEACON_BRANCH" 2>/dev/null || true
+# Check if autoship branch exists locally
+if git rev-parse --verify "$AUTOSHIP_BRANCH" >/dev/null 2>&1; then
+  echo "Deleting local branch $AUTOSHIP_BRANCH"
+  git branch -D "$AUTOSHIP_BRANCH" 2>/dev/null || true
 fi
 
 # Update state file
 echo "Updating state for $ISSUE_KEY to merged"
 bash "$SCRIPT_DIR/update-state.sh" "set-merged" "$ISSUE_KEY" || true
 
-# Remove beacon labels from the GitHub issue
+# Remove autoship labels from the GitHub issue
 if [[ -n "$REPO_SLUG" ]] && command -v gh >/dev/null 2>&1; then
-  echo "Removing transitional beacon labels from issue $ISSUE_NUM"
+  echo "Removing transitional autoship labels from issue $ISSUE_NUM"
 
-  # Remove only transitional labels — beacon:done is kept as permanent audit trail
-  for label in "beacon:in-progress" "beacon:blocked" "beacon:paused"; do
+  # Remove only transitional labels — autoship:done is kept as permanent audit trail
+  for label in "autoship:in-progress" "autoship:blocked" "autoship:paused"; do
     gh issue edit "$ISSUE_NUM" --remove-label "$label" --repo "$REPO_SLUG" 2>/dev/null || true
   done
   
@@ -109,7 +109,7 @@ if [[ -n "$REPO_SLUG" ]] && command -v gh >/dev/null 2>&1; then
   
   if [[ "$ISSUE_STATE" == "OPEN" ]]; then
     echo "Closing issue $ISSUE_NUM on GitHub"
-    gh issue close "$ISSUE_NUM" --repo "$REPO_SLUG" --comment "Closed by Beacon worktree cleanup after merge." 2>/dev/null || {
+    gh issue close "$ISSUE_NUM" --repo "$REPO_SLUG" --comment "Closed by AutoShip worktree cleanup after merge." 2>/dev/null || {
       echo "Warning: failed to close issue $ISSUE_NUM"
     }
   fi

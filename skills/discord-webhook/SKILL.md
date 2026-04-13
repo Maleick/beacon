@@ -1,19 +1,19 @@
 ---
-name: beacon-discord-webhook
-description: Parse GitHub webhook events from Discord channel and route to Beacon event queue
+name: discord-webhook
+description: Parse GitHub webhook events from Discord channel and route to AutoShip event queue
 tools: ["Read", "Write", "Bash"]
 ---
 
-# Beacon Discord Webhook Protocol
+# AutoShip Discord Webhook Protocol
 
-You are Beacon's Discord webhook consumer. You poll the connected Discord channel for GitHub webhook embeds, parse them into structured events, and write them to `.beacon/event-queue.json`. You run every 2 minutes via the orchestrator.
+You are Beacon's Discord webhook consumer. You poll the connected Discord channel for GitHub webhook embeds, parse them into structured events, and write them to `.autoship/event-queue.json`. You run every 2 minutes via the orchestrator.
 
 ---
 
 ## Step 1: Load Last Poll Timestamp
 
 ```bash
-last_ts=$(jq -r '.discord_last_poll // empty' .beacon/state.json)
+last_ts=$(jq -r '.discord_last_poll // empty' .autoship/state.json)
 ```
 
 If `discord_last_poll` is not set, default to 5 minutes ago:
@@ -71,26 +71,26 @@ Map embed content to event types using these signals:
 | `new_issue`      | 3        | Low — enters triage, not urgent         |
 | `closed_issue`   | 1        | Urgent — may need agent cancellation    |
 | `reopened_issue` | 2        | Normal — needs re-evaluation            |
-| `issue_labeled`  | 3        | Low — informational unless beacon label |
+| `issue_labeled`  | 3        | Low — informational unless autoship label |
 | `issue_edited`   | 2        | Normal — may need reclassification      |
 
-**Exception:** If a `beacon:blocked` or `beacon:urgent` label is added, elevate `issue_labeled` to priority 1.
+**Exception:** If a `autoship:blocked` or `autoship:urgent` label is added, elevate `issue_labeled` to priority 1.
 
 ## Step 5: Deduplicate Against Event Queue
 
-Before writing, check `.beacon/event-queue.json` for duplicate events:
+Before writing, check `.autoship/event-queue.json` for duplicate events:
 
 ```bash
 jq --arg issue "<N>" --arg type "<event_type>" \
   '[.[] | select(.issue == $issue and .type == $type)] | length' \
-  .beacon/event-queue.json
+  .autoship/event-queue.json
 ```
 
 If an identical `(issue, type)` pair was queued in the last 5 minutes, skip it — this prevents duplicate processing when both the Discord webhook and the GitHub poll detect the same event.
 
 ## Step 6: Write Events to Queue
 
-Read `.beacon/event-queue.json` (initialize as `[]` if missing), append entries, write back.
+Read `.autoship/event-queue.json` (initialize as `[]` if missing), append entries, write back.
 
 ### Queue Entry Format
 
@@ -118,7 +118,7 @@ The `data.source` field is always `"discord-webhook"` — this distinguishes web
 
 When an issue body is edited:
 
-1. Read the current complexity from `.beacon/state.json`
+1. Read the current complexity from `.autoship/state.json`
 2. If the issue is `unclaimed`, queue an `issue_edited` event so the orchestrator can reclassify
 3. If the issue is `running`, queue the event but with a note in `data.needs_reclassify: true` — the orchestrator decides whether to interrupt the agent
 
@@ -127,14 +127,14 @@ When an issue body is edited:
 When a closed issue is reopened:
 
 1. Queue a `reopened_issue` event with priority 2
-2. Include `data.previous_state` from `.beacon/state.json` if the issue exists there
+2. Include `data.previous_state` from `.autoship/state.json` if the issue exists there
 3. The orchestrator will handle re-dispatching — do not modify state directly
 
 ### Label-Only Changes
 
 When a label is added or removed:
 
-1. If it's a `beacon:*` label, queue with elevated priority
+1. If it's a `autoship:*` label, queue with elevated priority
 2. If it's a standard GitHub label (bug, enhancement, etc.), queue as priority 3 for metadata sync
 3. Ignore bot-generated label churn — if the actor matches the repo's bot account, skip
 
@@ -143,20 +143,20 @@ When a label is added or removed:
 If an embed doesn't match any known GitHub webhook pattern:
 
 1. Do not queue an event
-2. Log it for debugging: append to `.beacon/discord-webhook.log`
-3. Increment the `unrecognized_embed_count` counter in `.beacon/state.json`:
+2. Log it for debugging: append to `.autoship/discord-webhook.log`
+3. Increment the `unrecognized_embed_count` counter in `.autoship/state.json`:
 
 ```bash
 jq '.unrecognized_embed_count = ((.unrecognized_embed_count // 0) + 1)' \
-  .beacon/state.json > .beacon/state.tmp && mv .beacon/state.tmp .beacon/state.json
+  .autoship/state.json > .autoship/state.tmp && mv .autoship/state.tmp .autoship/state.json
 ```
 
-4. If the updated count exceeds 3 (i.e., more than 3 consecutive polls have produced unrecognized embeds), write a `webhook_parse_failure` event to `.beacon/event-queue.json` at priority 1:
+4. If the updated count exceeds 3 (i.e., more than 3 consecutive polls have produced unrecognized embeds), write a `webhook_parse_failure` event to `.autoship/event-queue.json` at priority 1:
 
 ```bash
-unrecognized_count=$(jq -r '.unrecognized_embed_count // 0' .beacon/state.json)
+unrecognized_count=$(jq -r '.unrecognized_embed_count // 0' .autoship/state.json)
 if [[ "$unrecognized_count" -gt 3 ]]; then
-  EVENT_QUEUE=".beacon/event-queue.json"
+  EVENT_QUEUE=".autoship/event-queue.json"
   [[ ! -f "$EVENT_QUEUE" ]] && echo '[]' > "$EVENT_QUEUE"
   jq --argjson n "$unrecognized_count" \
     '. + [{"type": "webhook_parse_failure", "consecutive_unrecognized": $n, "priority": 1, "queued_at": "'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'"}]' \
@@ -168,7 +168,7 @@ fi
 
 ```bash
 jq '.unrecognized_embed_count = 0' \
-  .beacon/state.json > .beacon/state.tmp && mv .beacon/state.tmp .beacon/state.json
+  .autoship/state.json > .autoship/state.tmp && mv .autoship/state.tmp .autoship/state.json
 ```
 
 6. Continue processing remaining messages
@@ -180,13 +180,13 @@ After processing all messages, update the last poll timestamp:
 ```bash
 jq --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
    '.discord_last_poll = $ts' \
-  .beacon/state.json > .beacon/state.tmp && mv .beacon/state.tmp .beacon/state.json
+  .autoship/state.json > .autoship/state.tmp && mv .autoship/state.tmp .autoship/state.json
 ```
 
-Write a summary to `.beacon/discord-webhook.log`:
+Write a summary to `.autoship/discord-webhook.log`:
 
 ```bash
-cat >> .beacon/discord-webhook.log <<EOF
+cat >> .autoship/discord-webhook.log <<EOF
 [$(date -u +%Y-%m-%dT%H:%M:%SZ)] Discord webhook poll
   Messages fetched: <count>
   Webhook embeds:   <count>
@@ -198,7 +198,7 @@ EOF
 Keep the log bounded:
 
 ```bash
-tail -200 .beacon/discord-webhook.log > .beacon/discord-webhook.log.tmp && mv .beacon/discord-webhook.log.tmp .beacon/discord-webhook.log
+tail -200 .autoship/discord-webhook.log > .autoship/discord-webhook.log.tmp && mv .autoship/discord-webhook.log.tmp .autoship/discord-webhook.log
 ```
 
 ## Output

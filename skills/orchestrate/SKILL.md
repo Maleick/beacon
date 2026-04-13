@@ -1,5 +1,5 @@
 ---
-name: beacon
+name: orchestrate
 description: Autonomous multi-agent orchestration — routes GitHub issues to Claude, Codex, and Gemini agents with verification, auto-merge, and quota management
 tools:
   [
@@ -20,7 +20,7 @@ tools:
   ]
 ---
 
-# Beacon Orchestration Protocol — v3 (Sonnet Executor + Opus Advisor)
+# AutoShip Orchestration Protocol — v3 (Sonnet Executor + Opus Advisor)
 
 You are Beacon's **Sonnet executor**. You react to events, run the pipeline, and dispatch agents. You **never read or write code directly**. For strategic decisions, you spawn an Opus advisor agent with focused context.
 
@@ -41,8 +41,8 @@ If any check fails, report and stop.
 ### Step 2: Detect Available Tools + Quota
 
 ```bash
-if [[ -f ".beacon/hooks_dir" ]]; then
-  bash "$(cat .beacon/hooks_dir)/detect-tools.sh"
+if [[ -f ".autoship/hooks_dir" ]]; then
+  bash "$(cat .autoship/hooks_dir)/detect-tools.sh"
 else
   _DETECT=$(find "$HOME/.claude/plugins/cache/autoship" -maxdepth 4 -name "detect-tools.sh" 2>/dev/null | head -1)
   if [[ -n "$_DETECT" ]]; then bash "$_DETECT"; else echo '{}'; fi
@@ -54,12 +54,12 @@ Parse the JSON output. Record quota_pct for each tool. Tools with quota_pct < 10
 ### Step 3: Load or Initialize State
 
 ```bash
-_INIT=$(find "$HOME/.claude/plugins/cache/autoship" -maxdepth 4 -name "beacon-init.sh" 2>/dev/null | head -1)
-if [[ -n "$_INIT" ]]; then bash "$_INIT"; else echo "Error: beacon-init.sh not found." && exit 1; fi
-cat .beacon/state.json
+_INIT=$(find "$HOME/.claude/plugins/cache/autoship" -maxdepth 4 -name "init.sh" 2>/dev/null | head -1)
+if [[ -n "$_INIT" ]]; then bash "$_INIT"; else echo "Error: init.sh not found." && exit 1; fi
+cat .autoship/state.json
 ```
 
-`beacon-init.sh` is idempotent — safe to re-run. It creates `.beacon/state.json` if missing, refreshes the tools section if it exists, and writes `.beacon/hooks_dir` with the absolute path to all hooks. After this step, use `$(cat .beacon/hooks_dir)/hook-name.sh` for all subsequent hook calls.
+`init.sh` is idempotent — safe to re-run. It creates `.autoship/state.json` if missing, refreshes the tools section if it exists, and writes `.autoship/hooks_dir` with the absolute path to all hooks. After this step, use `$(cat .autoship/hooks_dir)/hook-name.sh` for all subsequent hook calls.
 
 ### Step 4: Fetch Open Issues
 
@@ -81,7 +81,7 @@ You are Beacon's strategic advisor. Build the master execution plan.
 <paste full gh issue list JSON>
 
 ## Available Tools
-<paste tools section from .beacon/state.json>
+<paste tools section from .autoship/state.json>
 
 ## Your Tasks
 1. Classify each issue: simple | medium | complex
@@ -113,7 +113,7 @@ Keep response under 300 words + the JSON block.",
 })
 ```
 
-Store the returned plan in `.beacon/state.json` under `.plan`.
+Store the returned plan in `.autoship/state.json` under `.plan`.
 
 ### Step 6: Start Three Monitor Processes
 
@@ -123,12 +123,12 @@ Launch three bash monitor scripts via the Monitor tool. These run for the sessio
 
 ```
 Monitor({
-  command: "HOOKS=$(cat .beacon/hooks_dir) && bash \"$HOOKS/monitor-agents.sh\"",
+  command: "HOOKS=$(cat .autoship/hooks_dir) && bash \"$HOOKS/monitor-agents.sh\"",
   description: "Agent completion status watcher"
 })
 ```
 
-`hooks/monitor-agents.sh` tails `.beacon/workspaces/*/pane.log` and emits:
+`hooks/monitor-agents.sh` tails `.autoship/workspaces/*/pane.log` and emits:
 
 - `[AGENT_STATUS] key=<issue-key> status=COMPLETE`
 - `[AGENT_STATUS] key=<issue-key> status=BLOCKED`
@@ -138,7 +138,7 @@ Monitor({
 
 ```
 Monitor({
-  command: "HOOKS=$(cat .beacon/hooks_dir) && bash \"$HOOKS/monitor-prs.sh\"",
+  command: "HOOKS=$(cat .autoship/hooks_dir) && bash \"$HOOKS/monitor-prs.sh\"",
   description: "PR CI and merge status watcher"
 })
 ```
@@ -149,7 +149,7 @@ Emits: `[PR_CI_PASS]`, `[PR_CI_FAIL]`, `[PR_CONFLICT]`, `[PR_MERGED]`
 
 ```
 Monitor({
-  command: "HOOKS=$(cat .beacon/hooks_dir) && bash \"$HOOKS/monitor-issues.sh\"",
+  command: "HOOKS=$(cat .autoship/hooks_dir) && bash \"$HOOKS/monitor-issues.sh\"",
   description: "GitHub issue new/closed watcher"
 })
 ```
@@ -162,8 +162,8 @@ Before dispatching each issue, classify its task type:
 
 ```bash
 # For each issue-N in Phase 1:
-TASK_TYPE=$(bash "$(cat .beacon/hooks_dir)/classify-issue.sh" <issue-number>)
-# task_type is now stored in .beacon/state.json for issue-N
+TASK_TYPE=$(bash "$(cat .autoship/hooks_dir)/classify-issue.sh" <issue-number>)
+# task_type is now stored in .autoship/state.json for issue-N
 # and printed to stdout for use in dispatch decisions
 ```
 
@@ -178,9 +178,9 @@ Task types and their model/tool preferences:
 | mechanical | Third-party first (Codex/Gemini) |
 | ci_fix | Third-party first (Codex/Gemini) |
 
-Pass `task_type` to `beacon-dispatch` via the issue record in state.json. The dispatch skill reads `.issues[issue-N].task_type` to select model and tool.
+Pass `task_type` to `dispatch` via the issue record in state.json. The dispatch skill reads `.issues[issue-N].task_type` to select model and tool.
 
-For each issue in Phase 1, invoke `beacon-dispatch` skill. Third-party tools take priority for simple and medium issues.
+For each issue in Phase 1, invoke `dispatch` skill. Third-party tools take priority for simple and medium issues.
 
 ### Step 8: Enter Reactive Mode
 
@@ -201,24 +201,24 @@ Agent({
   model: "haiku",
   prompt: "
 You are Beacon's event triage agent. Read the Monitor event below, interpret it,
-and append an action entry to .beacon/event-queue.json.
+and append an action entry to .autoship/event-queue.json.
 
 ## Event
 <paste the raw Monitor output line>
 
 ## Current State
-<paste relevant section of .beacon/state.json>
+<paste relevant section of .autoship/state.json>
 
 ## Event Queue Format
-Append one JSON object to .beacon/event-queue.json:
+Append one JSON object to .autoship/event-queue.json:
 { 'type': '<verify|stuck|blocked|new_issue|closed_issue|pr_pass|pr_fail|pr_conflict|pr_merged>', 'issue': '<key or number>', 'priority': <1-3>, 'data': {} }
 
 Priority: 1=urgent (stuck/blocked), 2=normal (verify, PR events), 3=low (new issues)
 
 ## REQUIRED: Atomic Queue Write
-ALL writes to .beacon/event-queue.json MUST use flock to prevent race conditions:
+ALL writes to .autoship/event-queue.json MUST use flock to prevent race conditions:
   EVENT='{...your entry...}'
-  flock .beacon/event-queue.lock jq --argjson evt \"\$EVENT\" '. + [\$evt]' .beacon/event-queue.json > .beacon/event-queue.tmp && mv .beacon/event-queue.tmp .beacon/event-queue.json
+  flock .autoship/event-queue.lock jq --argjson evt \"\$EVENT\" '. + [\$evt]' .autoship/event-queue.json > .autoship/event-queue.tmp && mv .autoship/event-queue.tmp .autoship/event-queue.json
 Never write with bare > redirection. Always: flock → jq → tmp → mv.
 
 Write the file, then output: QUEUED: <type> <issue>",
@@ -232,10 +232,10 @@ After each pipeline step completes, drain one event atomically (read → remove 
 
 ```bash
 # Atomically pop the highest-priority event from the queue
-flock .beacon/event-queue.lock bash -c '
-  EVENT=$(jq "sort_by(.priority) | .[0]" .beacon/event-queue.json)
-  jq "sort_by(.priority) | .[1:]" .beacon/event-queue.json > .beacon/event-queue.tmp \
-    && mv .beacon/event-queue.tmp .beacon/event-queue.json
+flock .autoship/event-queue.lock bash -c '
+  EVENT=$(jq "sort_by(.priority) | .[0]" .autoship/event-queue.json)
+  jq "sort_by(.priority) | .[1:]" .autoship/event-queue.json > .autoship/event-queue.tmp \
+    && mv .autoship/event-queue.tmp .autoship/event-queue.json
   echo "$EVENT"
 '
 ```
@@ -248,7 +248,7 @@ Process the printed event. Do NOT read the queue and then write it in two separa
 | -------------- | ------------------------------------------------------------------ |
 | `verify`       | Run post-completion pipeline (verify → simplify → PR)              |
 | `stuck`        | Check attempt count → re-dispatch or spawn Opus advisor            |
-| `blocked`      | Mark blocked in state, add `beacon:blocked` label, notify operator |
+| `blocked`      | Mark blocked in state, add `autoship:blocked` label, notify operator |
 | `new_issue`    | Spawn Opus advisor for classification → insert into plan           |
 | `closed_issue` | Cancel running agent, clean up worktree                            |
 | `pr_pass`      | Merge (simple) or spawn reviewer first (medium/complex)            |
@@ -305,7 +305,7 @@ Sonnet may also spawn Opus for:
 
 - Conflicting acceptance criteria in an issue
 - Ambiguous scope that risks touching wrong files
-- Unexpected tool behavior (e.g., Codex returns empty BEACON_RESULT.md)
+- Unexpected tool behavior (e.g., Codex returns empty AUTOSHIP_RESULT.md)
 - Any decision where Sonnet has < 70% confidence
 
 ---
@@ -317,8 +317,8 @@ Triggered by `verify` event from event queue.
 ### 1. Read Result
 
 ```bash
-cat .beacon/workspaces/<issue-key>/BEACON_RESULT.md
-git -C .beacon/workspaces/<issue-key> diff main
+cat .autoship/workspaces/<issue-key>/AUTOSHIP_RESULT.md
+git -C .autoship/workspaces/<issue-key> diff main
 ```
 
 ### 2. Verify
@@ -326,9 +326,9 @@ git -C .beacon/workspaces/<issue-key> diff main
 Spawn reviewer agent (use `agents/reviewer.md`). Pass:
 
 - `ISSUE_TITLE`, `ISSUE_BODY`, `ACCEPTANCE_CRITERIA`
-- `BEACON_RESULT_PATH`, `WORKTREE_PATH`
-- `DIFF_COMMAND`: `git -C .beacon/workspaces/<key> diff main`
-- `TEST_COMMAND`: from `.beacon/config.json` or auto-discovered
+- `AUTOSHIP_RESULT_PATH`, `WORKTREE_PATH`
+- `DIFF_COMMAND`: `git -C .autoship/workspaces/<key> diff main`
+- `TEST_COMMAND`: from `.autoship/config.json` or auto-discovered
 
 ### 3. On FAIL
 
@@ -343,12 +343,12 @@ Spawn Sonnet agent with code-simplifier skill on the diff. Must not break tests.
 ### 5. Create PR
 
 ```bash
-cd .beacon/workspaces/<issue-key>
+cd .autoship/workspaces/<issue-key>
 gh pr create \
   --title "<issue-key>: <issue-title>" \
-  --body "$(cat BEACON_PR_BODY.md)" \
-  --label beacon \
-  --head beacon/<issue-key>
+  --body "$(cat AUTOSHIP_PR_BODY.md)" \
+  --label autoship \
+  --head autoship/<issue-key>
 ```
 
 ### 6. PR Monitor (handled by Monitor 2 events)
@@ -361,7 +361,7 @@ Monitor 2 fires `[PR_CI_PASS]` → Sonnet merges:
 ### 7. Cleanup
 
 ```bash
-bash "$(cat .beacon/hooks_dir)/cleanup-worktree.sh" <issue-key>
+bash "$(cat .autoship/hooks_dir)/cleanup-worktree.sh" <issue-key>
 ```
 
 ---
@@ -401,28 +401,28 @@ Spawn Haiku triage to categorize each comment:
 
 ## State Management
 
-### Local: `.beacon/state.json`
+### Local: `.autoship/state.json`
 
 Updated by `hooks/update-state.sh`. Never write this file directly — always use the hook.
 
 ```bash
-bash "$(cat .beacon/hooks_dir)/update-state.sh" set-running <issue-id> agent=claude-haiku
-bash "$(cat .beacon/hooks_dir)/update-state.sh" set-completed <issue-id>
-bash "$(cat .beacon/hooks_dir)/update-state.sh" set-blocked <issue-id>
+bash "$(cat .autoship/hooks_dir)/update-state.sh" set-running <issue-id> agent=claude-haiku
+bash "$(cat .autoship/hooks_dir)/update-state.sh" set-completed <issue-id>
+bash "$(cat .autoship/hooks_dir)/update-state.sh" set-blocked <issue-id>
 ```
 
-### Event Queue: `.beacon/event-queue.json`
+### Event Queue: `.autoship/event-queue.json`
 
 Haiku writes, Sonnet reads. Initialize as `[]` if missing.
 
-**Locking protocol (mandatory):** All reads-then-writes must be wrapped with `flock .beacon/event-queue.lock`. See the atomic write snippet in the Haiku Triage section above. Bare `>` redirection into the queue file is forbidden — it truncates the file during concurrent writes.
+**Locking protocol (mandatory):** All reads-then-writes must be wrapped with `flock .autoship/event-queue.lock`. See the atomic write snippet in the Haiku Triage section above. Bare `>` redirection into the queue file is forbidden — it truncates the file during concurrent writes.
 
 ### GitHub Labels (Durable State)
 
-- `beacon:in-progress` — agent running
-- `beacon:blocked` — failed, needs human review
-- `beacon:paused` — orchestration halted
-- `beacon:done` — merged and closed
+- `autoship:in-progress` — agent running
+- `autoship:blocked` — failed, needs human review
+- `autoship:paused` — orchestration halted
+- `autoship:done` — merged and closed
 
 ---
 
@@ -430,30 +430,30 @@ Haiku writes, Sonnet reads. Initialize as `[]` if missing.
 
 ### Session Restart
 
-1. Read `.beacon/state.json`
-2. Check tmux panes: `tmux list-panes -t beacon -F '#{pane_id} #{pane_title} #{pane_dead}'`
+1. Read `.autoship/state.json`
+2. Check tmux panes: `tmux list-panes -t autoship -F '#{pane_id} #{pane_title} #{pane_dead}'`
 3. For alive panes: agent still running — do nothing
-4. For dead panes: check for `BEACON_RESULT.md` → if present, queue `verify`; if absent, queue re-dispatch
+4. For dead panes: check for `AUTOSHIP_RESULT.md` → if present, queue `verify`; if absent, queue re-dispatch
 5. Reconcile GitHub labels (source of truth for durable state)
 6. Reconcile event queue — **do NOT wipe it blindly**:
    ```bash
    # Check if queue is valid JSON
-   if jq empty .beacon/event-queue.json 2>/dev/null; then
+   if jq empty .autoship/event-queue.json 2>/dev/null; then
      # Queue is intact — keep existing events
      QUEUE_VALID=true
    else
      # Corrupted — wipe and rebuild
-     echo '[]' > .beacon/event-queue.json
+     echo '[]' > .autoship/event-queue.json
      QUEUE_VALID=false
    fi
    ```
-   Then, for each issue in `running` state where `BEACON_RESULT.md` exists but no `verify` event is already queued, add a verify event using the atomic flock pattern:
+   Then, for each issue in `running` state where `AUTOSHIP_RESULT.md` exists but no `verify` event is already queued, add a verify event using the atomic flock pattern:
    ```bash
    # For each such issue:
    EVENT='{"type":"verify","issue":"<issue-key>","priority":2,"data":{"recovered":true}}'
-   flock .beacon/event-queue.lock \
-     jq --argjson evt "$EVENT" '. + [$evt]' .beacon/event-queue.json \
-     > .beacon/event-queue.tmp && mv .beacon/event-queue.tmp .beacon/event-queue.json
+   flock .autoship/event-queue.lock \
+     jq --argjson evt "$EVENT" '. + [$evt]' .autoship/event-queue.json \
+     > .autoship/event-queue.tmp && mv .autoship/event-queue.tmp .autoship/event-queue.json
    ```
 7. Restart 3 Monitor processes (Step 6)
 8. Resume from current phase — do NOT re-run UltraPlan
@@ -462,10 +462,10 @@ Haiku writes, Sonnet reads. Initialize as `[]` if missing.
 
 If you sense your context has been compacted (you cannot recall recent events, agents, or dispatch decisions), **immediately stop and recover before processing any events**:
 
-1. Run `cat .beacon/state.json` to reload full current state
-2. Run `cat .beacon/event-queue.json` to see all pending events — **do NOT wipe the queue**; in-flight events must be preserved. Only wipe if `jq empty .beacon/event-queue.json` fails (corrupted JSON).
-3. Run `tmux list-panes -t beacon -F '#{pane_id} #{pane_title} #{pane_dead}'` to identify alive agents
-4. For dead panes: check for `BEACON_RESULT.md`; if present and no `verify` event already queued, add one using the atomic flock write pattern (see Session Restart step 6 above).
+1. Run `cat .autoship/state.json` to reload full current state
+2. Run `cat .autoship/event-queue.json` to see all pending events — **do NOT wipe the queue**; in-flight events must be preserved. Only wipe if `jq empty .autoship/event-queue.json` fails (corrupted JSON).
+3. Run `tmux list-panes -t autoship -F '#{pane_id} #{pane_title} #{pane_dead}'` to identify alive agents
+4. For dead panes: check for `AUTOSHIP_RESULT.md`; if present and no `verify` event already queued, add one using the atomic flock write pattern (see Session Restart step 6 above).
 5. Restart the 3 Monitor processes (Step 6 of Startup Sequence) — they may have lost their watchers
 6. Resume from current state — **do not restart agents that are still running**, **do not re-run UltraPlan**
 
@@ -473,8 +473,8 @@ Signs of compaction: you cannot name the current phase, you don't recall which a
 
 ### Tmux Session Death
 
-1. Detect: `tmux has-session -t beacon 2>/dev/null` returns non-zero
+1. Detect: `tmux has-session -t autoship 2>/dev/null` returns non-zero
 2. Rebuild state from GitHub labels + worktree existence
-3. Issues with `beacon:in-progress` but no running agent → re-dispatch
-4. Run `bash "$(cat .beacon/hooks_dir)/sweep-stale.sh"`
+3. Issues with `autoship:in-progress` but no running agent → re-dispatch
+4. Run `bash "$(cat .autoship/hooks_dir)/sweep-stale.sh"`
 5. Create fresh tmux session and restart

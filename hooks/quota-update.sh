@@ -20,7 +20,7 @@ REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
   exit 1
 }
 
-QUOTA_FILE="$REPO_ROOT/.beacon/quota.json"
+QUOTA_FILE="$REPO_ROOT/.autoship/quota.json"
 
 # Parse --dry-run flag from arguments (can appear anywhere)
 DRY_RUN=0

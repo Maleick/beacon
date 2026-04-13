@@ -11,7 +11,7 @@ REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || REPO_ROOT="$(pwd)"
 # Quota helpers — return integer 0-100 or -1 (unknown)
 # ---------------------------------------------------------------------------
 
-QUOTA_FILE="${REPO_ROOT}/.beacon/quota.json"
+QUOTA_FILE="${REPO_ROOT}/.autoship/quota.json"
 
 # Claude uses a Max subscription — treat as always full.
 quota_claude() {
