@@ -1,5 +1,9 @@
 # Configuration
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Maleick/AutoShip/main/assets/autoship-banner.svg" width="600" alt="AutoShip" />
+</p>
+
 ---
 
 ## `.beacon/state.json`

@@ -1,6 +1,10 @@
 # Design Decisions
 
-All locked architectural decisions with rationale. These were finalized during the v3 architecture discussion and are reflected in `BEACON_V3_ARCHITECTURE.md`.
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Maleick/AutoShip/main/assets/autoship-banner.svg" width="600" alt="AutoShip" />
+</p>
+
+All locked architectural decisions with rationale. These were finalized during the v3 architecture discussion and are reflected in `AUTOSHIP_ARCHITECTURE.md`.
 
 ---
 

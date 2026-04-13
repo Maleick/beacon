@@ -509,8 +509,11 @@ PYEOF
 
 load_routing_config || true
 
+# Write hooks_dir so skills can locate sibling hooks without relative paths.
+echo "$SCRIPT_DIR" > "$BEACON_DIR/hooks_dir"
+
 # Sweep stale worktrees on startup (non-fatal if it fails)
 echo "Scanning for stale worktrees..."
 bash "$SCRIPT_DIR/sweep-stale.sh" 2>/dev/null || true
 
-echo "Beacon workspace ready at $BEACON_DIR"
+echo "AutoShip workspace ready at $BEACON_DIR"

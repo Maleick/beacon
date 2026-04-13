@@ -1,5 +1,9 @@
 # Troubleshooting
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Maleick/AutoShip/main/assets/autoship-banner.svg" width="600" alt="AutoShip" />
+</p>
+
 ---
 
 ## Startup Issues
@@ -10,7 +14,7 @@
 Error: not inside a git repository
 ```
 
-Run `/beacon:start` from inside a git repository with a GitHub remote.
+Run `/autoship:start` from inside a git repository with a GitHub remote.
 
 ```
 Error: jq is required but not found
@@ -81,7 +85,7 @@ Context compaction kills Monitor processes. The orchestrator skill has a recover
 
 > After compaction, restart 3 Monitor processes (Step 6)
 
-If Sonnet doesn't auto-restart them, manually trigger `/beacon:start` — it detects existing state and resumes without re-running UltraPlan.
+If Sonnet doesn't auto-restart them, manually trigger `/autoship:start` — it detects existing state and resumes without re-running UltraPlan.
 
 ### `monitor-prs.sh` emitting duplicate events
 
@@ -107,7 +111,7 @@ If queue is > 10 items, something is wrong. Check tmux for the orchestrator pane
 
 ### Session restart after tmux death
 
-All agents died with the tmux session. On restart, Beacon reconciles from GitHub labels:
+All agents died with the tmux session. On restart, AutoShip reconciles from GitHub labels:
 
 ```bash
 # Check what GitHub knows
@@ -122,14 +126,14 @@ Issues with `beacon:in-progress` label and surviving worktrees will be re-dispat
 
 ### state.json corrupted or missing
 
-GitHub labels are the durable source of truth. Beacon can rebuild from them:
+GitHub labels are the durable source of truth. AutoShip can rebuild from them:
 
 1. Delete or rename the corrupted state: `mv .beacon/state.json .beacon/state.json.bak`
-2. Run `/beacon:start` — it will re-initialize state and reconcile from GitHub labels
+2. Run `/autoship:start` — it will re-initialize state and reconcile from GitHub labels
 
 ### PR has merge conflicts
 
-Beacon does not auto-resolve conflicts — this is intentional. When `[PR_CONFLICT]` fires, Opus is consulted. If Opus recommends manual resolution, the issue will be marked `blocked`.
+AutoShip does not auto-resolve conflicts — this is intentional. When `[PR_CONFLICT]` fires, Opus is consulted. If Opus recommends manual resolution, the issue will be marked `blocked`.
 
 To manually resolve:
 
