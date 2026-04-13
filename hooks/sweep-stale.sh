@@ -62,9 +62,13 @@ LOG_FILE=".autoship/poll.log"
 
 mark_issue_swept() {
   local issue_key="$1"
-  local tmp_state
+  local tmp_state state_mode
 
   tmp_state=$(mktemp "${STATE_FILE}.tmp.XXXXXX" 2>/dev/null) || return 0
+  state_mode=$(stat -c '%a' "$STATE_FILE" 2>/dev/null || stat -f '%Lp' "$STATE_FILE" 2>/dev/null || true)
+  if [[ -n "$state_mode" ]]; then
+    chmod "$state_mode" "$tmp_state" 2>/dev/null || true
+  fi
   jq --arg key "$issue_key" '.issues[$key].swept = true' "$STATE_FILE" > "$tmp_state" &&
     mv "$tmp_state" "$STATE_FILE" 2>/dev/null || true
   rm -f "$tmp_state" 2>/dev/null || true
