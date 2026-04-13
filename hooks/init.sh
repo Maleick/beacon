@@ -24,7 +24,9 @@ cd "$REPO_ROOT"
 echo "AutoShip v${AUTOSHIP_VERSION} initializing..."
 
 # Check for jq dependency and minimum version (>= 1.6 required for --argjson)
+HAS_JQ=1
 if ! command -v jq >/dev/null 2>&1; then
+  HAS_JQ=0
   echo "Warning: jq not found. Install with: brew install jq" >&2
 else
   jq_version=$(jq --version 2>/dev/null | sed 's/jq-//' | cut -d. -f1-2) || jq_version="0.0"
@@ -85,7 +87,7 @@ fi
 
 # --- Error Recovery #6: Invalid/corrupted state file ---
 # If state.json exists but is not valid JSON, back it up and reinitialize.
-if [[ -f "$STATE_FILE" ]]; then
+if [[ "$HAS_JQ" -eq 1 && -f "$STATE_FILE" ]]; then
   if ! jq '.' "$STATE_FILE" > /dev/null 2>&1; then
     BACKUP="${STATE_FILE}.corrupted.$(date +%s)"
     mv "$STATE_FILE" "$BACKUP"
@@ -96,62 +98,89 @@ fi
 # Initialize state.json only if it doesn't exist
 if [[ ! -f "$STATE_FILE" ]]; then
   NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-  # Use jq to produce well-formed JSON, embedding the detected tools.
-  jq -n \
-    --arg repo "$REPO_SLUG" \
-    --arg now "$NOW" \
-    --arg ver "$AUTOSHIP_VERSION" \
-    --argjson tools "$TOOLS_JSON" \
-    '{
-      version: 1,
-      autoship_version: $ver,
-      repo: $repo,
-      started_at: $now,
-      updated_at: $now,
-      plan: {
-        phases: [],
-        current_phase: 0,
-        checkpoint_pending: false
-      },
-      issues: {},
-      tools: $tools,
-      stats: {
-        session_dispatched: 0,
-        session_completed: 0,
-        total_dispatched_all_time: 0,
-        total_completed_all_time: 0,
-        failed: 0,
-        blocked: 0
-      }
-    }' > "$STATE_FILE"
+  if [[ "$HAS_JQ" -eq 1 ]]; then
+    # Use jq to produce well-formed JSON, embedding the detected tools.
+    jq -n \
+      --arg repo "$REPO_SLUG" \
+      --arg now "$NOW" \
+      --arg ver "$AUTOSHIP_VERSION" \
+      --argjson tools "$TOOLS_JSON" \
+      '{
+        version: 1,
+        autoship_version: $ver,
+        repo: $repo,
+        started_at: $now,
+        updated_at: $now,
+        plan: {
+          phases: [],
+          current_phase: 0,
+          checkpoint_pending: false
+        },
+        issues: {},
+        tools: $tools,
+        stats: {
+          session_dispatched: 0,
+          session_completed: 0,
+          total_dispatched_all_time: 0,
+          total_completed_all_time: 0,
+          failed: 0,
+          blocked: 0
+        }
+      }' > "$STATE_FILE"
+  else
+    cat > "$STATE_FILE" <<EOF
+{
+  "version": 1,
+  "autoship_version": "$AUTOSHIP_VERSION",
+  "repo": "$REPO_SLUG",
+  "started_at": "$NOW",
+  "updated_at": "$NOW",
+  "plan": {"phases": [], "current_phase": 0, "checkpoint_pending": false},
+  "issues": {},
+  "tools": $TOOLS_JSON,
+  "stats": {
+    "session_dispatched": 0,
+    "session_completed": 0,
+    "total_dispatched_all_time": 0,
+    "total_completed_all_time": 0,
+    "failed": 0,
+    "blocked": 0
+  }
+}
+EOF
+  fi
   echo "Initialized $STATE_FILE"
 else
-  # Check for version mismatch and warn (migration notice, non-fatal)
-  existing_ver=$(jq -r '.autoship_version // "unknown"' "$STATE_FILE" 2>/dev/null) || existing_ver="unknown"
-  if [[ "$existing_ver" != "$AUTOSHIP_VERSION" ]]; then
-    echo "Notice: state.json has autoship_version=${existing_ver}, current is ${AUTOSHIP_VERSION} (migration may be needed)" >&2
-  fi
+  if [[ "$HAS_JQ" -eq 1 ]]; then
+    # Check for version mismatch and warn (migration notice, non-fatal)
+    existing_ver=$(jq -r '.autoship_version // "unknown"' "$STATE_FILE" 2>/dev/null) || existing_ver="unknown"
+    if [[ "$existing_ver" != "$AUTOSHIP_VERSION" ]]; then
+      echo "Notice: state.json has autoship_version=${existing_ver}, current is ${AUTOSHIP_VERSION} (migration may be needed)" >&2
+    fi
 
-  # Refresh tools section with current quota data without touching other state.
-  # Also reset session-scoped counters on each startup, and migrate old key names if present.
-  NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-  UPDATED=$(jq --argjson tools "$TOOLS_JSON" --arg now "$NOW" '
-    .tools = $tools |
-    .updated_at = $now |
-    # Migrate old "dispatched"/"completed" keys to new schema (keep totals, reset session)
-    if (.stats | has("dispatched")) then
-      .stats.total_dispatched_all_time = (.stats.total_dispatched_all_time // .stats.dispatched) |
-      .stats.total_completed_all_time  = (.stats.total_completed_all_time  // .stats.completed) |
-      del(.stats.dispatched) | del(.stats.completed)
-    else . end |
-    # Ensure all four keys exist
-    .stats.session_dispatched        = 0 |
-    .stats.session_completed         = 0 |
-    .stats.total_dispatched_all_time = (.stats.total_dispatched_all_time // 0) |
-    .stats.total_completed_all_time  = (.stats.total_completed_all_time  // 0)
-  ' "$STATE_FILE") && \
-    printf '%s\n' "$UPDATED" > "$STATE_FILE"
-  echo "Refreshed tools quota and reset session counters in $STATE_FILE"
+    # Refresh tools section with current quota data without touching other state.
+    # Also reset session-scoped counters on each startup, and migrate old key names if present.
+    NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    UPDATED=$(jq --argjson tools "$TOOLS_JSON" --arg now "$NOW" '
+      .tools = $tools |
+      .updated_at = $now |
+      # Migrate old "dispatched"/"completed" keys to new schema (keep totals, reset session)
+      if (.stats | has("dispatched")) then
+        .stats.total_dispatched_all_time = (.stats.total_dispatched_all_time // .stats.dispatched) |
+        .stats.total_completed_all_time  = (.stats.total_completed_all_time  // .stats.completed) |
+        del(.stats.dispatched) | del(.stats.completed)
+      else . end |
+      # Ensure all four keys exist
+      .stats.session_dispatched        = 0 |
+      .stats.session_completed         = 0 |
+      .stats.total_dispatched_all_time = (.stats.total_dispatched_all_time // 0) |
+      .stats.total_completed_all_time  = (.stats.total_completed_all_time  // 0)
+    ' "$STATE_FILE") && \
+      printf '%s\n' "$UPDATED" > "$STATE_FILE"
+    echo "Refreshed tools quota and reset session counters in $STATE_FILE"
+  else
+    echo "Warning: jq not found; skipping state refresh for existing $STATE_FILE" >&2
+  fi
 fi
 
 # Create config.json for operator overrides (if not present)
