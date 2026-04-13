@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# emit-event.sh — Atomically append one event to .beacon/event-queue.json
+#
+# Usage:
+#   bash hooks/emit-event.sh '<json-event-object>'
+#
+# Example:
+#   bash hooks/emit-event.sh '{"type":"verify","issue":"issue-42","tokens_used":1200}'
+#
+# The event is appended to event-queue.json using flock to prevent
+# concurrent writes from corrupting the JSON array.
+#
+# Environment:
+#   BEACON_ROOT — repo root (default: current directory)
+
+set -euo pipefail
+
+EVENT="${1:?usage: emit-event.sh '<json-event-string>'}"
+REPO_ROOT="${BEACON_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo ".")}"
+QUEUE="${REPO_ROOT}/.beacon/event-queue.json"
+LOCK="${REPO_ROOT}/.beacon/event-queue.lock"
+
+# Ensure queue exists as a valid JSON array
+if [[ ! -f "$QUEUE" ]] || ! jq -e 'if type == "array" then true else false end' "$QUEUE" >/dev/null 2>&1; then
+  echo "[]" > "$QUEUE"
+fi
+touch "$LOCK"
+
+flock "$LOCK" \
+  jq --argjson evt "$EVENT" '. + [$evt]' "$QUEUE" > "${QUEUE}.tmp" \
+  && mv "${QUEUE}.tmp" "$QUEUE"

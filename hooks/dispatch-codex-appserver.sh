@@ -11,8 +11,7 @@ PROMPT_FILE="${2:?usage: dispatch-codex-appserver.sh <issue-key> <prompt-file>}"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 WORKSPACE="${REPO_ROOT}/.beacon/workspaces/${ISSUE_KEY}"
 PANE_LOG="${WORKSPACE}/pane.log"
-EVENT_QUEUE="${REPO_ROOT}/.beacon/event-queue.json"
-EVENT_LOCK="${REPO_ROOT}/.beacon/event-queue.lock"
+
 STALL_TIMEOUT="${STALL_TIMEOUT_MS:-300000}"
 STALL_SECS=$(( STALL_TIMEOUT / 1000 ))
 
@@ -135,10 +134,7 @@ EVENT=$(jq -n \
   --arg ts      "$NOW" \
   '{type: $type, issue: $issue, issue_number: ($issueN | tonumber), tokens_used: $tok, timestamp: $ts}')
 
-touch "$EVENT_QUEUE" "$EVENT_LOCK"
-flock "${EVENT_LOCK}" \
-  jq --argjson evt "$EVENT" '. + [$evt]' "$EVENT_QUEUE" > "${EVENT_QUEUE}.tmp" \
-  && mv "${EVENT_QUEUE}.tmp" "$EVENT_QUEUE"
+bash "${REPO_ROOT}/hooks/emit-event.sh" "$EVENT"
 
 # Update token count in state.json
 bash "${REPO_ROOT}/hooks/update-state.sh" set-running "$ISSUE_KEY" "tokens_used=${TOKENS_USED}" 2>/dev/null || true
