@@ -1,5 +1,67 @@
 # AutoShip Changelog
 
+## v1.4.0
+_Released: 2026-04-13_
+
+## What's New in v1.4.0
+
+AutoShip shipped all 9 of its own self-improvement issues in a single session. Zero manual PRs. Zero manual merges.
+
+### New Features
+
+**🦀 Rust/unsafe routing** (#101)
+- New `rust_unsafe` task type routes unsafe Rust, DLL injection, and Windows-specific issues directly to Claude
+- `rust_windows` project profile detection: checks for `Cargo.toml` + `#[cfg(windows)]` in `src/` and overrides all routing to prefer Claude
+- Documented keyword-based promotion: `unsafe`, `DLL`, `cdylib`, `winapi`, `retour`, `#[cfg(windows)]`
+
+**📝 test_command auto-detection** (#102)
+- `hooks/init.sh` now scans `CLAUDE.md` and `AGENTS.md` for test command patterns at startup
+- Detects: `cargo test`, `pytest`, `npm test`, `make test`, `./gradlew test`, `python3 scripts/dev-preflight.py`
+- Writes `test_command` and `verify_command` to `config.json`; warns if nothing detected; idempotent
+
+**🏗️ Project context injection** (#103)
+- New `hooks/extract-context.sh` extracts Patterns/Conventions/Gotchas sections from `CLAUDE.md` and `AGENTS.md`
+- Output capped at 3000 chars (~500 tokens), written to `.autoship/project-context.md`
+- Injected as `## Project Context` into every dispatch prompt (Gemini, Codex, Haiku, Sonnet)
+
+**⚕️ Codex fast-fail + stuck tracking** (#104)
+- `hooks/dispatch-codex-appserver.sh`: fast-fail `codex --version` health check (10s timeout) at top of script
+- `hooks/quota-update.sh`: new `stuck <tool>` subcommand increments `tool_stuck_count`; marks `exhausted: true` at ≥3; emits `TOOL_DEGRADED` event
+
+**🎯 Opus pre-dispatch advisor for risky issues** (#105)
+- Gate condition in dispatch Step 3C: `complexity==complex` + `unsafe`/`DLL`/`hook`/`injection` keyword or `risk:high` label triggers Opus call
+- Opus returns JSON `{key_files, invariants, approach, risks}` (≤200 words) prepended as `## Architectural Guidance`
+- Budget protected: `advisor_calls_today` tracked in quota.json (cap: 10/day, daily auto-reset)
+
+### Bug Fixes & Improvements
+
+**🔧 Codex app-server auto-fallback** (#93)
+- `hooks/dispatch-codex-appserver.sh`: detect init failure/timeout, mark codex-spark exhausted, exit STUCK
+- `hooks/detect-tools.sh`: probe app-server availability before recording quota; auto-mark exhausted on failure
+
+**🗂️ Monitor state file initialization** (#94)
+- `hooks/init.sh` now creates `.autoship/.pr-monitor-seen.json` and `event-queue.json` on first run
+- `hooks/monitor-prs.sh` checks for file existence with clear error message
+
+**🔑 Compound issue sub-key support** (#95)
+- All hooks now accept compound keys like `issue-757a` or `issue-757-1`
+- Numeric prefix extracted for GitHub API calls; documented in dispatch skill
+
+**⚡ 20-agent dynamic cap** (#96)
+- Enforced and documented across orchestrate, dispatch skills, AUTOSHIP.md, README, and landing page
+
+---
+
+## Upgrade
+
+```bash
+/install-plugin /path/to/AutoShip
+```
+
+No breaking changes. All state files are backwards-compatible.
+
+---
+
 ## v1.3.0
 _Released: 2026-04-13_
 
