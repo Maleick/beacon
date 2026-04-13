@@ -1,0 +1,173 @@
+# AutoShip Changelog
+
+## v1.3.0
+_Released: 2026-04-13_
+
+## What's New in v1.3.0
+
+### Features
+- **AutoShip rebrand** — Complete rename from Beacon → AutoShip across 40+ files. New brand identity, slogan, sponsor badge, and tier diagram. All hooks, skills, state variables, and env vars updated.
+- **20-agent dynamic cap** — Dispatch now enforces a 50-agent hard cap (up from the implied 6). Claude agents up to 50 in parallel; Gemini 20+ via `even-vertical` layout; Codex app-server documented as non-functional with auto-fallback protocol.
+- **Codex app-server failure protocol** — On first STUCK from codex-spark/gpt, immediately escalate to next agent in priority list. No stall wait. Tool marked `exhausted: true` in quota.json for session.
+
+### Bug Fixes
+- **Dynamic hook path resolution** — `start.md` and all skills now use `$(cat .autoship/hooks_dir)` instead of hardcoded user-specific paths. Fully portable across machines.
+- **jq arg name fix in dispatch** — Corrected `--argjson` parameter name in turn/start JSON-RPC call (#92).
+- **Monitor path resolution** — Orchestrate skill uses `git rev-parse --show-toplevel` for dynamic hook path resolution at Monitor startup.
+
+### Security
+- **Prompt injection disclaimers** — All dispatch prompt templates now wrap issue body in `UNTRUSTED CONTENT` block with explicit warning to agents.
+- **TOCTOU fix + path canonicalization** — Verify pipeline temp files use unique names; all paths canonicalized before use.
+
+### CI/Infra
+- **GitHub Pages custom domain** — `autoship.teamoperator.red` configured via CNAME.
+- **CLAUDE.md gitignored** — Project instructions kept local, not committed.
+
+## Upgrade Notes
+
+If upgrading from v1.2.x: re-run `/install-plugin` to pick up the renamed hooks and skills. The `.autoship/` state directory structure is unchanged and compatible.
+
+## Stats
+- 11 commits since v1.2.1
+- 40+ files renamed/updated in the rebrand
+- 0 breaking API changes
+
+---
+
+## v1.2.1
+_Released: 2026-04-13_
+
+## Bug Fixes
+
+### P0 — Runtime failures
+
+- **`emit-event.sh`**: Replaced bare `flock` (Linux-only) with `flock → lockf → best-effort` fallback. On macOS, `flock` is absent; under `set -e` this silently aborted the script, dropping all queued events.
+- **`monitor-agents.sh`**: Same flock/lockf fallback applied to the crash handler's event-queue write.
+- **`update-state.sh`**: Fixed ISSUE_ID regex to accept `issue-88` format. Previous regex `^[0-9]+(-[a-z0-9-]+)?$` rejected keys starting with letters, causing all callers from `cleanup-worktree.sh` and `dispatch-codex-appserver.sh` to fail validation.
+
+### P1 — Safety / correctness
+
+- **`beacon-verify/SKILL.md`**: Guard now checks `[[ -e "$BEACON_RESULT_PATH" ]]` before calling `realpath`. On macOS/BSD, `realpath` on a non-existent file returns empty, causing a missing result file to be misreported as a symlink escape.
+- **`beacon-init.sh`**: Replaced three fixed `${STATE_FILE}.tmp` paths in the reconcile loop with a single `mktemp`-allocated temp file, consistent with the TOCTOU fixes applied elsewhere.
+
+### Cosmetic
+
+- **`README.md`**: Quoted `/autoship:start` mermaid node label with `["..."]` syntax to fix "Unable to render rich display" error on GitHub.
+
+---
+
+## v1.2.0
+_Released: 2026-04-13_
+
+## AutoShip v1.2.0
+
+This release rebrands the plugin from Beacon to **AutoShip** and ships a full security hardening pass across all shell hooks.
+
+### Rebrand
+
+- Plugin renamed from Beacon to AutoShip. Install command is now:
+  ```
+  claude plugin marketplace add Maleick/AutoShip && claude plugin install autoship@autoship
+  ```
+- All commands renamed: `/autoship:start`, `/autoship:plan`, `/autoship:stop`, `/autoship:status`
+- New banner graphic, full README rewrite with mermaid diagrams and benchmarks
+- GitHub Pages landing site at https://maleick.github.io/AutoShip/
+- Wiki published: Architecture, Configuration, Design Decisions, Troubleshooting
+
+### Security Hardening (9 findings addressed)
+
+**Critical**
+- Added `^issue-[0-9]+$` validation at all script entry points to prevent path traversal via malformed ISSUE_KEY (cleanup-worktree.sh, dispatch-codex-appserver.sh, update-state.sh)
+- Eliminated rm -rf path traversal vector in cleanup-worktree.sh
+
+**High**
+- Replaced manual JSON-RPC string construction with `jq -n --arg` in dispatch-codex-appserver.sh and monitor-agents.sh to prevent JSON injection
+- Fixed lockf subshell injection in beacon-init.sh and update-state.sh by passing paths as positional arguments instead of interpolating into bash -c strings
+- Added credential exclusions to .gitignore: `.env`, `*.pem`, `*.key`, `credentials.json`
+
+**Medium**
+- FIFOs created with `mkfifo -m 600` (owner-only permissions)
+- Added `chmod 600` to temp files before writing in beacon-init.sh and update-state.sh
+- Added Step 0.5 to verification pipeline: path canonicalization guard + mandatory FAIL on empty git diff
+
+### Other
+
+- Added prompt injection disclaimers to all 3 agent dispatch templates
+- Wiki link and security badge added to README
+- ISSUE_ID format validation added to update-state.sh
+- AutoShip ran on itself to ship 3 issues in this release
+
+---
+
+## v1.1.0
+_Released: 2026-04-13_
+
+## What's New in v1.1.0
+
+### Architecture
+- **Codex app-server dispatch** — Codex now runs via JSON-RPC app-server protocol. No tmux panes required. 300s stall watchdog, atomic event-queue writes.
+- **Symphony protocol** — All third-party agents communicate via standardized `turn/completed` / `thread/tokenUsage/updated` events.
+
+### Routing
+- **BEACON.md routing matrix** — Configure agent priority per task type in YAML front matter. Changes hot-reload without restarting Beacon.
+- **Task-type classifier** — 7 task types: `research`, `docs`, `simple_code`, `medium_code`, `complex`, `mechanical`, `ci_fix`. Label → complexity → body heuristics → title keywords → default.
+- **Copilot CLI support** — GitHub Copilot (`gh copilot` or standalone) added to dispatch routing. Grok CLI removed (no OAuth support).
+
+### Observability
+- **Token ledger** — Every issue's token spend tracked in `.beacon/token-ledger.json`. Per-session and all-time aggregates.
+- **Stats scopes** — `/beacon:status` shows session vs all-time dispatch/completion counts.
+- **BEACON_RESULT.md archival** — Completed results saved to `.beacon/results/<N>-<slug>.md`.
+
+### Reliability
+- **Pre-dispatch exhaustion gate** — Skips agents whose quota is exhausted before creating a worktree.
+- **Event queue** — All agent completions route through `.beacon/event-queue.json` with atomic flock writes.
+
+## Upgrade
+
+```bash
+claude plugin update beacon
+```
+
+---
+
+## v0.1
+_Released: 2026-04-12_
+
+## Beacon v0.1
+
+First public release of Beacon — autonomous multi-agent GitHub issue orchestration for Claude Code.
+
+### What's included
+
+- **v3 Advisor + Monitor architecture** — Sonnet executor, Opus advisor, Haiku triage
+- **Third-party-first dispatch** — Routes to Codex, Gemini, or Grok before consuming Claude quota
+- **Worktree isolation** — Each issue gets its own git worktree and tmux pane
+- **Tiered escalation** — Haiku → Sonnet → Opus based on complexity and failure count
+- **Verification pipeline** — Sonnet review → simplify → PR → CI monitor → auto-merge
+- **Discord integration** — Webhook event handling and command channel support
+- **Quota tracking** — Decay-based estimation with ASCII progress bars in `/beacon status`
+- **Error recovery** — Session restart, stale worktree cleanup, crash detection, API retry
+
+### Install
+
+\`\`\`bash
+/install-plugin https://github.com/Maleick/beacon
+\`\`\`
+
+### Requirements
+
+- Claude Code with plugin support
+- `jq`, `gh` (authenticated)
+- Optional: `codex`, `gemini`, or `grok` CLI for quota efficiency
+
+### Commands
+
+| Command | Purpose |
+|---------|---------|
+| `/beacon start` | Launch orchestration |
+| `/beacon status` | Show agents, quota, progress |
+| `/beacon stop` | Stop all agents |
+| `/beacon plan` | Analyze without dispatching |
+
+---
+
