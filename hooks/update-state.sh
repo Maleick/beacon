@@ -166,10 +166,10 @@ append_ledger_record() {
       echo "Error: refusing symlink lock file: $lock" >&2
       return 1
     fi
-    exec 9>>"$lock"
-    flock -x 9
+    exec 8>>"$lock"
+    flock -x 8
     _write_ledger_record
-    exec 9>&-
+    exec 8>&-
   elif command -v lockf >/dev/null 2>&1; then
     local record_tmp
     record_tmp=$(mktemp)
