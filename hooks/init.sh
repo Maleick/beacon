@@ -161,6 +161,37 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
   echo "Initialized $CONFIG_FILE (add test_command, etc. for overrides)"
 fi
 
+# Auto-populate test_command/verify_command if not present (idempotent)
+if ! jq -e 'has("test_command")' "$CONFIG_FILE" >/dev/null 2>&1; then
+  DETECTED_TEST=""
+  # Scan CLAUDE.md and AGENTS.md for patterns
+  for f in "CLAUDE.md" "AGENTS.md"; do
+    if [[ -f "$f" ]]; then
+      for p in "python3 scripts/dev-preflight.py" "cargo test" "pytest" "npm test" "make test" "./gradlew test"; do
+        if grep -qF "$p" "$f"; then
+          DETECTED_TEST="$p"
+          break 2
+        fi
+      done
+    fi
+  done
+
+  if [[ -n "$DETECTED_TEST" ]]; then
+    UPDATED=$(jq --arg tc "$DETECTED_TEST" '.test_command = $tc | .verify_command = (.verify_command // $tc)' "$CONFIG_FILE")
+    printf '%s\n' "$UPDATED" > "$CONFIG_FILE"
+    echo "Auto-detected test_command: $DETECTED_TEST"
+  else
+    UPDATED=$(jq '.test_command = "" | .verify_command = (.verify_command // "")' "$CONFIG_FILE")
+    printf '%s\n' "$UPDATED" > "$CONFIG_FILE"
+    echo "Warning: no test_command detected — set it in .autoship/config.json"
+  fi
+elif ! jq -e 'has("verify_command")' "$CONFIG_FILE" >/dev/null 2>&1; then
+  # Migration: test_command exists but verify_command does not.
+  TC=$(jq -r '.test_command // ""' "$CONFIG_FILE")
+  UPDATED=$(jq --arg tc "$TC" '.verify_command = $tc' "$CONFIG_FILE")
+  printf '%s\n' "$UPDATED" > "$CONFIG_FILE"
+fi
+
 # --- Token Ledger: create + append new session entry ---
 init_token_ledger() {
   local ledger="$AUTOSHIP_DIR/token-ledger.json"
