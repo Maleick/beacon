@@ -236,7 +236,7 @@ jq --arg num "<number>" \
 Run the daily refresh check — this auto-resets any tool whose quota crossed midnight (subscription tools renew daily):
 
 ```bash
-bash hooks/quota-update.sh refresh
+bash "$(cat .beacon/hooks_dir)/quota-update.sh" refresh
 ```
 
 This is a no-op if all tools were already reset today. No API calls made.

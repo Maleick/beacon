@@ -41,7 +41,9 @@ If any check fails, report and stop.
 ### Step 2: Detect Available Tools + Quota
 
 ```bash
-bash hooks/detect-tools.sh
+_DETECT=$(find "$HOME/.claude/plugins/cache/autoship" -maxdepth 5 -name "detect-tools.sh" 2>/dev/null | head -1)
+[[ -z "$_DETECT" ]] && _DETECT="/Users/maleick/Projects/AutoShip/hooks/detect-tools.sh"
+if [[ -f "$_DETECT" ]]; then bash "$_DETECT"; else echo '{}'; fi
 ```
 
 Parse the JSON output. Record quota_pct for each tool. Tools with quota_pct < 10 are considered exhausted and skipped during dispatch.
@@ -49,11 +51,13 @@ Parse the JSON output. Record quota_pct for each tool. Tools with quota_pct < 10
 ### Step 3: Load or Initialize State
 
 ```bash
-bash hooks/beacon-init.sh
+_INIT=$(find "$HOME/.claude/plugins/cache/autoship" -maxdepth 5 -name "beacon-init.sh" 2>/dev/null | head -1)
+[[ -z "$_INIT" ]] && _INIT="/Users/maleick/Projects/AutoShip/hooks/beacon-init.sh"
+bash "$_INIT"
 cat .beacon/state.json
 ```
 
-`beacon-init.sh` is idempotent — safe to re-run. It creates `.beacon/state.json` if missing, or refreshes the tools section if it exists.
+`beacon-init.sh` is idempotent — safe to re-run. It creates `.beacon/state.json` if missing, refreshes the tools section if it exists, and writes `.beacon/hooks_dir` with the absolute path to all hooks. After this step, use `$(cat .beacon/hooks_dir)/hook-name.sh` for all subsequent hook calls.
 
 ### Step 4: Fetch Open Issues
 
@@ -117,7 +121,7 @@ Launch three bash monitor scripts via the Monitor tool. These run for the sessio
 
 ```
 Monitor({
-  command: "bash hooks/monitor-agents.sh",
+  command: "HOOKS=$(cat .beacon/hooks_dir) && bash \"$HOOKS/monitor-agents.sh\"",
   description: "Agent completion status watcher"
 })
 ```
@@ -132,7 +136,7 @@ Monitor({
 
 ```
 Monitor({
-  command: "bash hooks/monitor-prs.sh",
+  command: "HOOKS=$(cat .beacon/hooks_dir) && bash \"$HOOKS/monitor-prs.sh\"",
   description: "PR CI and merge status watcher"
 })
 ```
@@ -143,7 +147,7 @@ Emits: `[PR_CI_PASS]`, `[PR_CI_FAIL]`, `[PR_CONFLICT]`, `[PR_MERGED]`
 
 ```
 Monitor({
-  command: "bash hooks/monitor-issues.sh",
+  command: "HOOKS=$(cat .beacon/hooks_dir) && bash \"$HOOKS/monitor-issues.sh\"",
   description: "GitHub issue new/closed watcher"
 })
 ```
@@ -156,21 +160,21 @@ Before dispatching each issue, classify its task type:
 
 ```bash
 # For each issue-N in Phase 1:
-TASK_TYPE=$(bash hooks/classify-issue.sh <issue-number>)
+TASK_TYPE=$(bash "$(cat .beacon/hooks_dir)/classify-issue.sh" <issue-number>)
 # task_type is now stored in .beacon/state.json for issue-N
 # and printed to stdout for use in dispatch decisions
 ```
 
 Task types and their model/tool preferences:
-| task_type    | Preferred tool         |
+| task_type | Preferred tool |
 |--------------|------------------------|
-| research     | Opus advisor call first, then worker |
-| docs         | Simple worker (Haiku or Codex)       |
-| simple_code  | Third-party first (Codex/Gemini)     |
-| medium_code  | Third-party first (Codex/Gemini)     |
-| complex      | Opus advisor call first, then Sonnet worker |
-| mechanical   | Third-party first (Codex/Gemini)     |
-| ci_fix       | Third-party first (Codex/Gemini)     |
+| research | Opus advisor call first, then worker |
+| docs | Simple worker (Haiku or Codex) |
+| simple_code | Third-party first (Codex/Gemini) |
+| medium_code | Third-party first (Codex/Gemini) |
+| complex | Opus advisor call first, then Sonnet worker |
+| mechanical | Third-party first (Codex/Gemini) |
+| ci_fix | Third-party first (Codex/Gemini) |
 
 Pass `task_type` to `beacon-dispatch` via the issue record in state.json. The dispatch skill reads `.issues[issue-N].task_type` to select model and tool.
 
@@ -355,7 +359,7 @@ Monitor 2 fires `[PR_CI_PASS]` → Sonnet merges:
 ### 7. Cleanup
 
 ```bash
-bash hooks/cleanup-worktree.sh <issue-key>
+bash "$(cat .beacon/hooks_dir)/cleanup-worktree.sh" <issue-key>
 ```
 
 ---
@@ -400,9 +404,9 @@ Spawn Haiku triage to categorize each comment:
 Updated by `hooks/update-state.sh`. Never write this file directly — always use the hook.
 
 ```bash
-bash hooks/update-state.sh set-running <issue-id> agent=claude-haiku
-bash hooks/update-state.sh set-completed <issue-id>
-bash hooks/update-state.sh set-blocked <issue-id>
+bash "$(cat .beacon/hooks_dir)/update-state.sh" set-running <issue-id> agent=claude-haiku
+bash "$(cat .beacon/hooks_dir)/update-state.sh" set-completed <issue-id>
+bash "$(cat .beacon/hooks_dir)/update-state.sh" set-blocked <issue-id>
 ```
 
 ### Event Queue: `.beacon/event-queue.json`
@@ -470,5 +474,5 @@ Signs of compaction: you cannot name the current phase, you don't recall which a
 1. Detect: `tmux has-session -t beacon 2>/dev/null` returns non-zero
 2. Rebuild state from GitHub labels + worktree existence
 3. Issues with `beacon:in-progress` but no running agent → re-dispatch
-4. Run `bash hooks/sweep-stale.sh`
+4. Run `bash "$(cat .beacon/hooks_dir)/sweep-stale.sh"`
 5. Create fresh tmux session and restart

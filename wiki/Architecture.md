@@ -1,6 +1,10 @@
 # Architecture
 
-Beacon v3 uses an **Advisor + Monitor** pattern. Sonnet runs the event loop. Opus advises at strategic decision points. Haiku handles triage. Bash scripts watch for events.
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Maleick/AutoShip/main/assets/autoship-banner.svg" width="600" alt="AutoShip" />
+</p>
+
+AutoShip uses an **Advisor + Monitor** pattern. Sonnet runs the event loop. Opus advises at strategic decision points. Haiku handles triage. Bash scripts watch for events.
 
 ---
 
@@ -153,8 +157,8 @@ beacon/
     cleanup-worktree.sh             Post-merge cleanup
     sweep-stale.sh                  Orphaned worktree cleanup
   commands/
-    beacon.md                       /beacon:beacon (help)
-    start.md                        /beacon:start
-    stop.md                         /beacon:stop
-    plan.md                         /beacon:plan
+    autoship.md                     /autoship:autoship (help)
+    start.md                        /autoship:start
+    stop.md                         /autoship:stop
+    plan.md                         /autoship:plan
 ```
