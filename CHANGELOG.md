@@ -1,7 +1,59 @@
-# AutoShip Changelog
+## v1.4.2 — v1.4.2
+_2026-04-13_
 
-## v1.4.0
-_Released: 2026-04-13_
+## Fixes
+
+### dispatch-codex-appserver.sh — tool resolution
+
+`TOOL` is now resolved once at script startup (reading `state.json` with `2>/dev/null || echo "codex-spark"` fallback) and reused across all five stuck/exhausted paths:
+
+- **Before:** 3 early-exit branches (crash, init timeout, init failure) hardcoded `"codex-spark"` — incorrect for `codex-gpt` dispatches. The wrong tool's stuck count was incremented.
+- **Before:** 2 dynamic-lookup branches ran `jq` again mid-script and were missing `|| true` under `set -euo pipefail`, meaning a missing `state.json` could abort the script before emitting the stuck event.
+- **After:** Single lookup at top, `|| true` on all five call sites.
+
+### extract-context.sh — awk heading pattern
+
+- Removed `.*` before keyword anchor: `^#+[[:space:]]*.*(keyword)` → `^#+[[:space:]]*(keyword)`. The old pattern matched any header that *contained* the keyword anywhere in the line; the new pattern requires the heading to *start* with it.
+- Removed redundant `rm -f "$TEMP_FILE"` — the `trap EXIT` added in v1.4.1 already handles cleanup on all exit paths.
+- Fixed comment: "deduplicate sections" was inaccurate (no deduplication occurs).
+
+## Upgrade
+
+No breaking changes. Drop-in replacement for v1.4.1.
+
+---
+
+## v1.4.1 — v1.4.1
+_2026-04-13_
+
+## Fixes
+
+### Correctness
+
+- **`mark_exhausted()` removed from `dispatch-codex-appserver.sh`** — All crash/timeout exhaustion paths now route through `quota-update.sh stuck`, which enforces the 3-strike threshold, emits `TOOL_DEGRADED` events, and uses the canonical schema. The local function bypassed all of this.
+
+- **`detect-tools.sh` app-server probe** — Replaced inline jq exhausted write with `quota-update.sh stuck` calls for both `codex-spark` and `codex-gpt`. Both tools share the same binary; if `codex app-server help` fails, both are equally non-functional.
+
+- **`init.sh` rust_windows profile** — `map_values` was overwriting `rust_unsafe` routing with `["claude-haiku", "claude-sonnet"]` when a rust_windows profile was detected, defeating its purpose. Fixed with `with_entries` to preserve the `rust_unsafe` key.
+
+- **`extract-context.sh` awk portability** — `IGNORECASE = 1` is a gawk-only extension silently ignored by macOS system awk. Replaced with `tolower($0) ~` pattern matching (works on all awk implementations). Also added `trap 'rm -f "$TEMP_FILE"' EXIT` to prevent temp file leaks on error exit.
+
+### Efficiency
+
+- **`quota-update.sh` ensure_init** — Upgrade pass (adding `tool_stuck_count`/`exhausted` fields) now skips if `advisor_calls_today` sentinel is already present, avoiding a redundant jq rewrite on every command invocation.
+
+## Upgrade
+
+No breaking changes. State files are backwards-compatible with v1.4.0.
+
+```bash
+/install-plugin /path/to/AutoShip
+```
+
+---
+
+## v1.4.0 — v1.4.0 — 9 Self-Improvement Issues
+_2026-04-13_
 
 ## What's New in v1.4.0
 
@@ -62,8 +114,8 @@ No breaking changes. All state files are backwards-compatible.
 
 ---
 
-## v1.3.0
-_Released: 2026-04-13_
+## v1.3.0 — v1.3.0 — AutoShip Rebrand + 20-Agent Cap + Security Hardening
+_2026-04-13_
 
 ## What's New in v1.3.0
 
@@ -96,8 +148,8 @@ If upgrading from v1.2.x: re-run `/install-plugin` to pick up the renamed hooks 
 
 ---
 
-## v1.2.1
-_Released: 2026-04-13_
+## v1.2.1 — v1.2.1 — Bug fixes
+_2026-04-13_
 
 ## Bug Fixes
 
@@ -118,8 +170,8 @@ _Released: 2026-04-13_
 
 ---
 
-## v1.2.0
-_Released: 2026-04-13_
+## v1.2.0 — v1.2.0 — AutoShip rebrand + security hardening
+_2026-04-13_
 
 ## AutoShip v1.2.0
 
@@ -161,8 +213,8 @@ This release rebrands the plugin from Beacon to **AutoShip** and ships a full se
 
 ---
 
-## v1.1.0
-_Released: 2026-04-13_
+## v1.1.0 — v1.1.0 — Symphony dispatch, routing matrix, token ledger
+_2026-04-13_
 
 ## What's New in v1.1.0
 
@@ -192,8 +244,8 @@ claude plugin update beacon
 
 ---
 
-## v0.1
-_Released: 2026-04-12_
+## v0.1 — v0.1 — Initial Release
+_2026-04-12_
 
 ## Beacon v0.1
 
