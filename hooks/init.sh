@@ -57,6 +57,20 @@ fi
 # Create directory structure
 mkdir -p "$WORKSPACES_DIR"
 
+# Initialize .pr-monitor-seen.json (used by monitor-prs.sh)
+PR_SEEN_FILE="$AUTOSHIP_DIR/.pr-monitor-seen.json"
+if [[ ! -f "$PR_SEEN_FILE" ]]; then
+  echo '{}' > "$PR_SEEN_FILE"
+  echo "Initialized $PR_SEEN_FILE"
+fi
+
+# Initialize event-queue.json (used by emit-event.sh)
+EVENT_QUEUE_FILE="$AUTOSHIP_DIR/event-queue.json"
+if [[ ! -f "$EVENT_QUEUE_FILE" ]]; then
+  echo '[]' > "$EVENT_QUEUE_FILE"
+  echo "Initialized $EVENT_QUEUE_FILE"
+fi
+
 # Detect tools and parse quotas.
 # detect-tools.sh outputs: {"claude": {"available": bool, "quota_pct": N}, ...}
 # Transform to state.json format:  {"claude": {"status": "available"|"unavailable", "quota_pct": N}, ...}
