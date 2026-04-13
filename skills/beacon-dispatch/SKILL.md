@@ -18,6 +18,14 @@ Third-party tools (Codex/Gemini/Copilot) are dispatched first for simple and med
 | Medium     | Codex-Spark/GPT (quota > 10%) | Gemini/Copilot (quota > 10%) → Sonnet         | Claude Sonnet (rate-lim) |
 | Complex    | Claude Sonnet + autoresearch  | Claude Sonnet (retry)                         | Opus advisor: re-slice   |
 
+> Agent routing is configured via `BEACON.md` front matter. On dispatch, read `.beacon/routing.json` (populated by `beacon-init.sh`) to get the priority list for the issue's `task_type`. Fall back to the hardcoded matrix if routing.json is absent.
+
+```bash
+# Read priority list for this task type from routing config
+TASK_TYPE=$(jq -r --arg id "$ISSUE_ID" '.issues[$id].task_type // "simple_code"' .beacon/state.json)
+PRIORITY_LIST=($(jq -r --arg t "$TASK_TYPE" '.routing[$t] // ["claude-haiku"] | .[]' .beacon/routing.json))
+```
+
 Check quota before dispatch:
 
 ```bash
