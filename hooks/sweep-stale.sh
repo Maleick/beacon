@@ -60,6 +60,16 @@ is_pane_active() {
 
 LOG_FILE=".autoship/poll.log"
 
+mark_issue_swept() {
+  local issue_key="$1"
+  local tmp_state
+
+  tmp_state=$(mktemp "${STATE_FILE}.tmp.XXXXXX" 2>/dev/null) || return 0
+  jq --arg key "$issue_key" '.issues[$key].swept = true' "$STATE_FILE" > "$tmp_state" &&
+    mv "$tmp_state" "$STATE_FILE" 2>/dev/null || true
+  rm -f "$tmp_state" 2>/dev/null || true
+}
+
 # Iterate over worktree directories
 CLEANED_COUNT=0
 shopt -s nullglob
@@ -93,7 +103,7 @@ for worktree_dir in "$WORKSPACES_DIR"/*/; do
     }
 
     # Write swept sentinel to prevent re-processing
-    jq --arg key "$ISSUE_KEY" '.issues[$key].swept = true' "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE" 2>/dev/null || true
+    mark_issue_swept "$ISSUE_KEY"
 
     CLEANED_COUNT=$((CLEANED_COUNT + 1))
     continue
@@ -120,7 +130,7 @@ for worktree_dir in "$WORKSPACES_DIR"/*/; do
       }
 
       # Write swept sentinel to prevent re-processing
-      jq --arg key "$ISSUE_KEY" '.issues[$key].swept = true' "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE" 2>/dev/null || true
+      mark_issue_swept "$ISSUE_KEY"
 
       CLEANED_COUNT=$((CLEANED_COUNT + 1))
     fi
