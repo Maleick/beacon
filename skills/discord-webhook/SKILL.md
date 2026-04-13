@@ -32,7 +32,34 @@ mcp__plugin_discord_discord__fetch_messages(since: "<last_ts>")
 
 This returns an array of Discord messages. Filter to only messages that contain **embeds** — these are the GitHub webhook deliveries. Skip plain-text messages from humans or bots.
 
-## Step 3: Identify GitHub Webhook Embeds
+## Step 3: Verify Webhook Identity (Required)
+
+Before treating embeds as GitHub events, require message-level authenticity checks.
+
+Accept a message only if **all** are true:
+
+1. `message.webhook_id` exists and is listed in `.autoship/discord-auth.json` under `allowed_webhook_ids`
+2. At least one embed URL/footer link hostname is `github.com`
+3. The repository parsed from the validated GitHub embed URL matches the current repo slug from `.autoship/state.json` (or `git remote get-url origin` if state is unavailable)
+4. If embed author/footer includes a repository, it also matches that same current repo slug
+
+Example auth file:
+
+```json
+{
+  "allowed_webhook_ids": ["123456789012345678"]
+}
+```
+
+If `.autoship/discord-auth.json` is missing/invalid or `allowed_webhook_ids` is empty, **fail closed**:
+
+- Queue no Discord webhook events
+- Log an authorization error to `.autoship/discord-webhook.log`
+- Continue normal processing for non-Discord event sources
+
+Ignore all messages that fail verification, even if embed structure looks valid.
+
+## Step 4: Identify GitHub Webhook Embeds
 
 GitHub webhook embeds have a recognizable structure:
 
@@ -52,7 +79,7 @@ For each embed, extract:
 4. **Actor** — the GitHub user who triggered the event (from embed author)
 5. **Additional data** — labels added/removed, body changes, etc.
 
-## Step 4: Classify Event Type
+## Step 5: Classify Event Type
 
 Map embed content to event types using these signals:
 
@@ -76,7 +103,7 @@ Map embed content to event types using these signals:
 
 **Exception:** If a `autoship:blocked` or `autoship:urgent` label is added, elevate `issue_labeled` to priority 1.
 
-## Step 5: Deduplicate Against Event Queue
+## Step 6: Deduplicate Against Event Queue
 
 Before writing, check `.autoship/event-queue.json` for duplicate events:
 
@@ -88,7 +115,7 @@ jq --arg issue "<N>" --arg type "<event_type>" \
 
 If an identical `(issue, type)` pair was queued in the last 5 minutes, skip it — this prevents duplicate processing when both the Discord webhook and the GitHub poll detect the same event.
 
-## Step 6: Write Events to Queue
+## Step 7: Write Events to Queue
 
 Read `.autoship/event-queue.json` (initialize as `[]` if missing), append entries, write back.
 
@@ -112,7 +139,7 @@ Read `.autoship/event-queue.json` (initialize as `[]` if missing), append entrie
 
 The `data.source` field is always `"discord-webhook"` — this distinguishes webhook-sourced events from poll-sourced events and Monitor events.
 
-## Step 7: Handle Edge Cases
+## Step 8: Handle Edge Cases
 
 ### Edited Issues
 
@@ -173,7 +200,7 @@ jq '.unrecognized_embed_count = 0' \
 
 6. Continue processing remaining messages
 
-## Step 8: Update Poll Timestamp
+## Step 9: Update Poll Timestamp
 
 After processing all messages, update the last poll timestamp:
 
