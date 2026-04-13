@@ -8,6 +8,7 @@
   <a href="https://github.com/Maleick/AutoShip/releases"><img src="https://img.shields.io/github/v/release/Maleick/AutoShip?style=flat" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/Maleick/AutoShip?style=flat" alt="License"></a>
   <a href="https://github.com/Maleick/AutoShip/security"><img src="https://img.shields.io/badge/security-hardened-green?style=flat" alt="Security"></a>
+  <a href="https://github.com/sponsors/Maleick"><img src="https://img.shields.io/github/sponsors/Maleick?label=Sponsor&logo=GitHub&color=EA4AAA&style=flat-square" alt="Sponsor"></a>
 </p>
 
 <p align="center">
@@ -19,6 +20,12 @@
   <a href="#dispatch-matrix">Dispatch Matrix</a> •
   <a href="#architecture">Architecture</a> •
   <a href="#benchmarks">Benchmarks</a>
+</p>
+
+<p align="center"><strong>Issues in. PRs out. Opus budget: intact.</strong></p>
+
+<p align="center">
+  <a href="https://github.com/sponsors/Maleick">☕ Keep the agents running</a>
 </p>
 
 ---
@@ -126,6 +133,21 @@ AutoShip detects available tools at startup and routes work accordingly.
 | `/autoship:status` | Live dashboard — active agents, quota bars, per-model token spend        |
 
 ## How It Works
+
+```
+GitHub issue opened
+      ↓
+Agent tier assigned automatically:
+  • Config / YAML / docs   →  Claude Haiku
+  • Single-module feature  →  Gemini Flash
+  • Docs / README          →  GPT-4o Mini
+  • Multi-file / security  →  Claude Sonnet
+  • Architecture / advisor →  Claude Opus
+      ↓
+PR opened, CI runs, branch auto-deleted on merge
+      ↓
+You review decisions. Not boilerplate.
+```
 
 ```mermaid
 flowchart TD
