@@ -128,26 +128,34 @@ if [[ ! -f "$STATE_FILE" ]]; then
         }
       }' > "$STATE_FILE"
   else
-    cat > "$STATE_FILE" <<EOF
-{
-  "version": 1,
-  "autoship_version": "$AUTOSHIP_VERSION",
-  "repo": "$REPO_SLUG",
-  "started_at": "$NOW",
-  "updated_at": "$NOW",
-  "plan": {"phases": [], "current_phase": 0, "checkpoint_pending": false},
-  "issues": {},
-  "tools": $TOOLS_JSON,
-  "stats": {
-    "session_dispatched": 0,
-    "session_completed": 0,
-    "total_dispatched_all_time": 0,
-    "total_completed_all_time": 0,
-    "failed": 0,
-    "blocked": 0
-  }
+    REPO_SLUG="$REPO_SLUG" AUTOSHIP_VERSION="$AUTOSHIP_VERSION" NOW="$NOW" TOOLS_JSON="$TOOLS_JSON" \
+      python3 - <<'PY' > "$STATE_FILE"
+import json
+import os
+import sys
+
+state = {
+    "version": 1,
+    "autoship_version": os.environ["AUTOSHIP_VERSION"],
+    "repo": os.environ["REPO_SLUG"],
+    "started_at": os.environ["NOW"],
+    "updated_at": os.environ["NOW"],
+    "plan": {"phases": [], "current_phase": 0, "checkpoint_pending": False},
+    "issues": {},
+    "tools": json.loads(os.environ["TOOLS_JSON"]),
+    "stats": {
+        "session_dispatched": 0,
+        "session_completed": 0,
+        "total_dispatched_all_time": 0,
+        "total_completed_all_time": 0,
+        "failed": 0,
+        "blocked": 0,
+    },
 }
-EOF
+
+json.dump(state, sys.stdout, indent=2)
+sys.stdout.write("\n")
+PY
   fi
   echo "Initialized $STATE_FILE"
 else
