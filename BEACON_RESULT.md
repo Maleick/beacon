@@ -1,15 +1,21 @@
-# Result: #52 — exhaustion gate
+# Result: #42 — Gemini Symphony shim
 
 ## Status: DONE
 
 ## Changes Made
-- skills/beacon-dispatch/SKILL.md: Added "Step 2B: Pre-Dispatch Exhaustion Gate" section between Step 2 and Step 3A. Includes bash snippet that checks `exhausted` flag per agent in `.beacon/quota.json`, iterates through the priority list skipping exhausted agents, selects first available agent, and re-runs `hooks/detect-tools.sh` every 5 dispatches to refresh quota estimates. Also added fallback BLOCKED escalation when all agents are exhausted.
+- hooks/shims/gemini-appserver.sh: created
 
 ## Tests
-- Command: `grep -c 'exhausted' skills/beacon-dispatch/SKILL.md`
-- Result: PASS (9 matches)
+- Command: `test -x hooks/shims/gemini-appserver.sh && echo PASS`
+- Result: PASS
+- Command: `bash -n hooks/shims/gemini-appserver.sh && echo "syntax OK"`
+- Result: syntax OK
 
 ## Notes
-- Exhaustion gate placed as Step 2B — runs after worktree/pane setup, before agent-specific dispatch steps (3A/3B/3C)
-- detect-tools.sh refresh fires on dispatch_count % 5 == 0 (and > 0) to avoid running on first dispatch
-- If all agents exhausted: issue marked BLOCKED, escalates to Opus advisor
+- Follows grok-appserver.sh pattern exactly
+- Handles Symphony turn/start format with `input[0].text` extraction (issue requirement), plus `.prompt`/`.content`/`.text` fallbacks
+- Stall timeout: 300s watchdog kills gemini subprocess, emits turn/failed with descriptive message
+- Token parsing: greps gemini output for "Total tokens: N", "tokens: N", or "tokenCount: N" patterns; falls back to 0
+- turn/failed event used for non-zero exits (matching issue spec), turn/completed for exit 0
+- threadId fixed to "beacon-gemini" per spec
+- Script is executable (chmod +x applied)
