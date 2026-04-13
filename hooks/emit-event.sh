@@ -20,6 +20,12 @@ REPO_ROOT="${AUTOSHIP_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo 
 QUEUE="${REPO_ROOT}/.autoship/event-queue.json"
 LOCK="${REPO_ROOT}/.autoship/event-queue.lock"
 
+# Refuse to operate on symlinked queue path to prevent clobbering arbitrary files
+if [[ -L "$QUEUE" ]]; then
+  echo "Refusing to write to symlinked queue path: $QUEUE" >&2
+  exit 1
+fi
+
 # Ensure queue exists as a valid JSON array
 if [[ ! -f "$QUEUE" ]] || ! jq -e 'type == "array"' "$QUEUE" >/dev/null 2>&1; then
   echo "[]" > "$QUEUE"
