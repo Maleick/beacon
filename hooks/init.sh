@@ -175,6 +175,9 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
   echo "Initialized $CONFIG_FILE (add test_command, etc. for overrides)"
 fi
 
+# Populate project-context.md from CLAUDE.md/AGENTS.md/config.json
+bash "$SCRIPT_DIR/extract-context.sh" || true
+
 # --- Token Ledger: create + append new session entry ---
 init_token_ledger() {
   local ledger="$AUTOSHIP_DIR/token-ledger.json"
