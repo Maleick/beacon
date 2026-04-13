@@ -32,7 +32,7 @@ Before spawning the reviewer, run these assertions. Any failure → immediate FA
 # Check existence first — missing file is a distinct failure from symlink escape
 if [[ ! -e "$BEACON_RESULT_PATH" ]]; then
   echo "VERDICT: FAIL — BEACON_RESULT.md missing (agent did not write result file)"
-  # Mark issue blocked, skip to escalation
+  exit 1
 fi
 REAL_RESULT=$(realpath "$BEACON_RESULT_PATH" 2>/dev/null)
 REAL_WORKTREE=$(realpath "$WORKTREE_PATH" 2>/dev/null)

@@ -314,6 +314,7 @@ reconcile_stale_running() {
 
     local state_tmp
     state_tmp=$(mktemp)
+    trap 'rm -f "${state_tmp:-}"' RETURN
     if [[ $has_inprogress_label -eq 1 ]]; then
       # Agent may be running in a different session — preserve state but clear dead pane ref
       echo "  $key: beacon:in-progress label present — preserving running state, clearing pane_id"

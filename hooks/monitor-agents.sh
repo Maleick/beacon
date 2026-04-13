@@ -46,21 +46,7 @@ check_dead_panes() {
               --argjson num "$issue_num" \
               --arg pane "$pane_id" \
               '{"type":"agent_crashed","issue":$num,"pane":$pane,"priority":1}')
-            if command -v flock >/dev/null 2>&1; then
-              (
-                flock -x 9
-                jq --argjson evt "$CRASH_EVENT" '. + [$evt]' "$EVENT_QUEUE" > "${EVENT_QUEUE}.tmp" \
-                  && mv "${EVENT_QUEUE}.tmp" "$EVENT_QUEUE"
-              ) 9>"${EVENT_QUEUE}.lock" 2>/dev/null || true
-            elif command -v lockf >/dev/null 2>&1; then
-              lockf -k "${EVENT_QUEUE}.lock" bash -c '
-                evt="$1" q="$2" qtmp="$3"
-                jq --argjson evt "$evt" '"'"'. + [$evt]'"'"' "$q" > "$qtmp" && mv "$qtmp" "$q"
-              ' _ "$CRASH_EVENT" "$EVENT_QUEUE" "${EVENT_QUEUE}.tmp" 2>/dev/null || true
-            else
-              jq --argjson evt "$CRASH_EVENT" '. + [$evt]' "$EVENT_QUEUE" > "${EVENT_QUEUE}.tmp" \
-                && mv "${EVENT_QUEUE}.tmp" "$EVENT_QUEUE" 2>/dev/null || true
-            fi
+            bash hooks/emit-event.sh "$CRASH_EVENT" 2>/dev/null || true
 
             # Log to poll.log
             echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] monitor-agents: CRASH detected key=$key pane=$pane_id — marked failed, queued agent_crashed" \
