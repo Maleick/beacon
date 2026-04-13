@@ -40,7 +40,8 @@ Accept a message only if **all** are true:
 
 1. `message.webhook_id` exists and is listed in `.autoship/discord-auth.json` under `allowed_webhook_ids`
 2. At least one embed URL/footer link hostname is `github.com`
-3. If embed author/footer includes a repository, it matches this repo (`Maleick/AutoShip`)
+3. The repository parsed from the validated GitHub embed URL matches the current repo slug from `.autoship/state.json` (or `git remote get-url origin` if state is unavailable)
+4. If embed author/footer includes a repository, it also matches that same current repo slug
 
 Example auth file:
 

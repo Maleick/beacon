@@ -31,7 +31,8 @@ mcp__plugin_discord_discord__fetch_messages(since: "<LAST_SEEN>")
 ```
 
 - Pass `since: "<LAST_SEEN>"` when `LAST_SEEN` is non-empty so only messages newer than the last-seen ID are returned. If `LAST_SEEN` is empty (first run), omit the `since` parameter to fetch recent history.
-- If no new messages exist, skip to Step 8 (update timestamp and exit).
+- If no new messages exist, exit immediately without rewriting `.autoship/discord-last-seen.json`.
+- Initialize `NEWEST_MSG_ID="$LAST_SEEN"` before iterating, then update it to each fetched message's ID as you process the batch.
 
 ## Step 3: Authorize Messages (Required)
 
@@ -193,7 +194,7 @@ echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) ERROR: $COMMAND - $REASON" >> .autoship/dis
 
 ## Step 8: Update Last-Seen Timestamp
 
-After processing all messages, write the ID of the newest message to the tracking file:
+After processing all messages, write `NEWEST_MSG_ID` to the tracking file:
 
 ```bash
 cat <<EOF > .autoship/discord-last-seen.json
