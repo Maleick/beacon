@@ -170,16 +170,28 @@ if [ -n "$CHANGED_FILES" ]; then
   git add $CHANGED_FILES
 fi
 # If CHANGED_FILES is empty, the agent already committed everything — skip the add step
-git commit -m "<issue-key>: <issue-title>
+ISSUE_KEY="<issue-key>"
+ISSUE_TITLE="<issue-title>"      # untrusted: keep as data only
+ISSUE_NUMBER="<issue-number>"
+TOOL_NAME="<tool-name>"
+ATTEMPT="<N>"
 
-Closes #<issue-number>
+# Build commit/PR text in files (no shell eval of untrusted issue title/body)
+printf '%s\n\nCloses #%s\n\nDispatched by AutoShip. Agent: %s. Attempt: %s.\nVerified by Sonnet reviewer. Tests: passing.\n' \
+  "$ISSUE_KEY: $ISSUE_TITLE" \
+  "$ISSUE_NUMBER" \
+  "$TOOL_NAME" \
+  "$ATTEMPT" > .autoship_commit_msg.txt
 
-Dispatched by AutoShip. Agent: <tool-name>. Attempt: <N>.
-Verified by Sonnet reviewer. Tests: passing."
+printf '## Summary\n%s\n\n## Verification\n- Tests: passing\n- Reviewer: PASS\n- Simplified: yes/no\n\nCloses #%s\n\nDispatched by [AutoShip](https://github.com/Maleick/AutoShip)\n' \
+  "<from AUTOSHIP_RESULT.md>" \
+  "$ISSUE_NUMBER" > .autoship_pr_body.md
+
+git commit -F .autoship_commit_msg.txt
 
 gh pr create \
-  --title "<issue-key>: <issue-title>" \
-  --body "## Summary\n<from AUTOSHIP_RESULT.md>\n\n## Verification\n- Tests: passing\n- Reviewer: PASS\n- Simplified: yes/no\n\nCloses #<number>\n\nDispatched by [AutoShip](https://github.com/Maleick/AutoShip)" \
+  --title "$ISSUE_KEY: $ISSUE_TITLE" \
+  --body-file .autoship_pr_body.md \
   --label autoship
 ```
 
