@@ -24,7 +24,11 @@ if [[ -z "${AUTOSHIP_STATE_LOCKED:-}" ]]; then
   export AUTOSHIP_STATE_LOCKED=1
   if command -v flock >/dev/null 2>&1; then
     # Linux: hold FD lock for script duration
-    exec 9>"$LOCK_FILE"
+    if [[ -L "$LOCK_FILE" ]]; then
+      echo "Error: refusing symlink lock file: $LOCK_FILE" >&2
+      exit 1
+    fi
+    exec 9>>"$LOCK_FILE"
     flock -x 9
   elif command -v lockf >/dev/null 2>&1; then
     # macOS (BSD): re-exec under lockf; AUTOSHIP_STATE_LOCKED prevents infinite loop
@@ -173,10 +177,14 @@ append_ledger_record() {
   }
 
   if command -v flock >/dev/null 2>&1; then
-    exec 9>"$lock"
-    flock -x 9
+    if [[ -L "$lock" ]]; then
+      echo "Error: refusing symlink lock file: $lock" >&2
+      return 1
+    fi
+    exec 8>>"$lock"
+    flock -x 8
     _write_ledger_record
-    exec 9>&-
+    exec 8>&-
   elif command -v lockf >/dev/null 2>&1; then
     local record_tmp
     record_tmp=$(mktemp)
