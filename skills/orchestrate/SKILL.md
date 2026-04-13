@@ -41,7 +41,7 @@ If any check fails, report and stop.
 ### Step 2: Detect Available Tools + Quota
 
 ```bash
-_DETECT=$(find "$HOME/.claude/plugins/cache/autoship" -maxdepth 4 -name "detect-tools.sh" 2>/dev/null | head -1)
+_DETECT=$(find "$HOME/.claude/plugins/cache/autoship" -maxdepth 4 -type f -name "detect-tools.sh" 2>/dev/null | sort | head -1)
 if [[ -n "$_DETECT" ]]; then bash "$_DETECT"; else echo '{}'; fi
 ```
 
