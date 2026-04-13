@@ -31,9 +31,35 @@ mcp__plugin_discord_discord__fetch_messages(since: "<LAST_SEEN>")
 ```
 
 - Pass `since: "<LAST_SEEN>"` when `LAST_SEEN` is non-empty so only messages newer than the last-seen ID are returned. If `LAST_SEEN` is empty (first run), omit the `since` parameter to fetch recent history.
-- If no new messages exist, skip to Step 7 (update timestamp and exit).
+- If no new messages exist, skip to Step 8 (update timestamp and exit).
 
-## Step 3: Parse Commands
+## Step 3: Authorize Messages (Required)
+
+Before parsing commands, discard any message that is not from an authorized operator.
+
+Authorization must pass one of these checks:
+
+- `message.author.id` is listed in `.autoship/discord-auth.json` under `allowed_user_ids`
+- OR `message.member.roles` intersects `allowed_role_ids`
+
+Example auth file:
+
+```json
+{
+  "allowed_user_ids": ["123456789012345678"],
+  "allowed_role_ids": ["987654321098765432"]
+}
+```
+
+If `.autoship/discord-auth.json` is missing, invalid, or both allow-lists are empty, **fail closed**:
+
+- Execute no commands
+- Log an error to `.autoship/discord-commands.log`
+- Reply once in channel: `Command channel disabled: no Discord authorization config.`
+
+Only authorized messages continue to command parsing; all others are ignored silently.
+
+## Step 4: Parse Commands
 
 Iterate through new messages in chronological order (oldest first). For each message, attempt to match one of the following commands. Matching is **case-insensitive**. Issue numbers accept both `#N` and bare `N` formats.
 
@@ -47,7 +73,7 @@ Iterate through new messages in chronological order (oldest first). For each mes
 
 If a message does not match any command pattern, ignore it silently.
 
-## Step 4: Execute Commands
+## Step 5: Execute Commands
 
 Process each matched command in order:
 
@@ -143,7 +169,7 @@ Issues: 14 open, 2 excluded
 
 Reply with this summary using `mcp__plugin_discord_discord__reply`.
 
-## Step 5: Reply to Each Command
+## Step 6: Reply to Each Command
 
 For every matched command, send an acknowledgment reply using:
 
@@ -153,7 +179,7 @@ mcp__plugin_discord_discord__reply
 
 Always reply in the same channel/thread where the command was received. Keep replies concise — one or two lines max.
 
-## Step 6: Handle Errors
+## Step 7: Handle Errors
 
 If a command fails (e.g., invalid issue number, state.json write error):
 
@@ -165,7 +191,7 @@ If a command fails (e.g., invalid issue number, state.json write error):
 echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) ERROR: $COMMAND - $REASON" >> .autoship/discord-commands.log
 ```
 
-## Step 7: Update Last-Seen Timestamp
+## Step 8: Update Last-Seen Timestamp
 
 After processing all messages, write the ID of the newest message to the tracking file:
 
