@@ -1,3 +1,28 @@
+## v1.4.2 — v1.4.2
+_2026-04-13_
+
+## Fixes
+
+### dispatch-codex-appserver.sh — tool resolution
+
+`TOOL` is now resolved once at script startup (reading `state.json` with `2>/dev/null || echo "codex-spark"` fallback) and reused across all five stuck/exhausted paths:
+
+- **Before:** 3 early-exit branches (crash, init timeout, init failure) hardcoded `"codex-spark"` — incorrect for `codex-gpt` dispatches. The wrong tool's stuck count was incremented.
+- **Before:** 2 dynamic-lookup branches ran `jq` again mid-script and were missing `|| true` under `set -euo pipefail`, meaning a missing `state.json` could abort the script before emitting the stuck event.
+- **After:** Single lookup at top, `|| true` on all five call sites.
+
+### extract-context.sh — awk heading pattern
+
+- Removed `.*` before keyword anchor: `^#+[[:space:]]*.*(keyword)` → `^#+[[:space:]]*(keyword)`. The old pattern matched any header that *contained* the keyword anywhere in the line; the new pattern requires the heading to *start* with it.
+- Removed redundant `rm -f "$TEMP_FILE"` — the `trap EXIT` added in v1.4.1 already handles cleanup on all exit paths.
+- Fixed comment: "deduplicate sections" was inaccurate (no deduplication occurs).
+
+## Upgrade
+
+No breaking changes. Drop-in replacement for v1.4.1.
+
+---
+
 ## v1.4.1 — v1.4.1
 _2026-04-13_
 
