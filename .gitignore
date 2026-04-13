@@ -27,3 +27,11 @@ Thumbs.db
 # AutoShip runtime artifacts (generated per-run, not source)
 BEACON_RESULT.md
 BEACON_PROMPT.md
+
+# Credentials and secrets — never commit these
+.env
+.env.*
+*.pem
+*.key
+credentials.json
+service-account*.json

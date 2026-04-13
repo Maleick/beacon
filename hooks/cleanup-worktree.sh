@@ -12,6 +12,12 @@ if [[ -z "$ISSUE_KEY" ]]; then
   exit 1
 fi
 
+# Validate ISSUE_KEY to prevent path traversal
+if [[ ! "$ISSUE_KEY" =~ ^issue-[0-9]+$ ]]; then
+  echo "Error: invalid ISSUE_KEY: $ISSUE_KEY" >&2
+  exit 1
+fi
+
 # Locate repo root
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
   echo "Error: not inside a git repository" >&2

@@ -8,6 +8,13 @@ set -euo pipefail
 
 ISSUE_KEY="${1:?usage: dispatch-codex-appserver.sh <issue-key> <prompt-file>}"
 PROMPT_FILE="${2:?usage: dispatch-codex-appserver.sh <issue-key> <prompt-file>}"
+
+# Validate ISSUE_KEY to prevent path traversal
+if [[ ! "$ISSUE_KEY" =~ ^issue-[0-9]+$ ]]; then
+  echo "Error: invalid ISSUE_KEY: $ISSUE_KEY" >&2
+  exit 1
+fi
+
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 WORKSPACE="${REPO_ROOT}/.beacon/workspaces/${ISSUE_KEY}"
 PANE_LOG="${WORKSPACE}/pane.log"
@@ -31,7 +38,7 @@ touch "$PANE_LOG"
 FIFO_IN="${WORKSPACE}/.codex-stdin"
 FIFO_OUT="${WORKSPACE}/.codex-stdout"
 rm -f "$FIFO_IN" "$FIFO_OUT"
-mkfifo "$FIFO_IN" "$FIFO_OUT"
+mkfifo -m 600 "$FIFO_IN" "$FIFO_OUT"
 
 cleanup() {
   rm -f "$FIFO_IN" "$FIFO_OUT"
@@ -66,7 +73,9 @@ send_rpc() {
 send_rpc '{"jsonrpc":"2.0","method":"initialize","params":{"clientInfo":{"name":"beacon","version":"1.0.0"}},"id":1}'
 
 # thread/start
-send_rpc "{\"jsonrpc\":\"2.0\",\"method\":\"thread/start\",\"params\":{\"threadId\":\"${THREAD_ID}\"},\"id\":2}"
+START_MSG=$(jq -n --arg tid "$THREAD_ID" \
+  '{"jsonrpc":"2.0","method":"thread/start","params":{"threadId":$tid},"id":2}')
+send_rpc "$START_MSG"
 
 # turn/start with prompt content
 PROMPT_TEXT=$(cat "$PROMPT_FILE")
