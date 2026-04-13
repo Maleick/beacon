@@ -167,6 +167,26 @@ if [[ -z "$CURRENT" ]]; then
     "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 fi
 
+# Special handling for retries in set-running: preserve original started_at as first_started_at
+if [["$NEW_STATE" == "running" ]]; then
+  # Parse attempt from key=value args (default to 1 if not provided)
+  ATTEMPT=1
+  for pair in "$@"; do
+    if [[ "$pair" == attempt=* ]]; then
+      ATTEMPT="${pair#*=}"
+      break
+    fi
+  done
+
+  # On retry (attempt > 1), preserve original started_at as first_started_at
+  if [[ "$ATTEMPT" -gt 1 ]]; then
+    TMP=$(make_tmp)
+    jq --arg key "$ISSUE_ID" \
+      ".issues[\$key].first_started_at = (.issues[\$key].first_started_at // .issues[\$key].started_at) | .issues[\$key].started_at = (now | todate)" \
+      "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+  fi
+fi
+
 # For set-merged: assert title and agent are present (enrich from GitHub if absent)
 if [[ "$ACTION" == "set-merged" ]]; then
   ISSUE_NUMBER=$(echo "$ISSUE_ID" | grep -o '[0-9]*')
@@ -193,7 +213,6 @@ else
     '.issues[$id].state = $state | .updated_at = $now' \
     "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 fi
-
 # Increment stat counter if applicable
 if [[ -n "$STAT_KEY" ]]; then
   TMP=$(make_tmp)
