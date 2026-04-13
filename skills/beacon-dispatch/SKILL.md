@@ -12,11 +12,11 @@ Third-party tools (Codex/Gemini) are dispatched first for simple and medium issu
 
 ## Dispatch Priority Matrix
 
-| Complexity | Primary                      | Fallback                         | Last Resort              |
-| ---------- | ---------------------------- | -------------------------------- | ------------------------ |
-| Simple     | Codex-Spark/GPT (quota > 10%)| Gemini (quota > 10%) → Haiku    | Claude Haiku (rate-lim)  |
-| Medium     | Codex-Spark/GPT (quota > 10%)| Gemini (quota > 10%) → Sonnet   | Claude Sonnet (rate-lim) |
-| Complex    | Claude Sonnet + autoresearch | Claude Sonnet (retry)            | Opus advisor: re-slice   |
+| Complexity | Primary                       | Fallback                      | Last Resort              |
+| ---------- | ----------------------------- | ----------------------------- | ------------------------ |
+| Simple     | Codex-Spark/GPT (quota > 10%) | Gemini (quota > 10%) → Haiku  | Claude Haiku (rate-lim)  |
+| Medium     | Codex-Spark/GPT (quota > 10%) | Gemini (quota > 10%) → Sonnet | Claude Sonnet (rate-lim) |
+| Complex    | Claude Sonnet + autoresearch  | Claude Sonnet (retry)         | Opus advisor: re-slice   |
 
 # TODO: Grok support pending CLI detection
 
@@ -108,6 +108,45 @@ tmux pipe-pane -t $PANE_ID "cat >> .beacon/workspaces/$ISSUE_KEY/pane.log"
 ```
 
 Monitor 1 watches these log files for `COMPLETE`, `BLOCKED`, or `STUCK` on their own line.
+
+---
+
+## Step 2B: Pre-Dispatch Exhaustion Gate
+
+Before assigning an agent, check the `exhausted` flag in `.beacon/quota.json`. This prevents dispatching to a tool that has already reported quota exhaustion — even if quota_pct is stale.
+
+```bash
+# Re-run detect-tools.sh every 5 dispatches to refresh quota estimates
+DISPATCH_COUNT=$(jq -r '.dispatch_count // 0' .beacon/state.json)
+if (( DISPATCH_COUNT % 5 == 0 && DISPATCH_COUNT > 0 )); then
+  bash hooks/detect-tools.sh
+fi
+
+# Before assigning agent, check exhausted flag
+# Iterate through the priority list for this complexity tier:
+for AGENT in "${PRIORITY_LIST[@]}"; do
+  EXHAUSTED=$(jq -r --arg t "$AGENT" '.[$t].exhausted // false' .beacon/quota.json)
+  if [[ "$EXHAUSTED" == "true" ]]; then
+    # Fall through to next agent in priority list
+    continue
+  fi
+  # Agent is not exhausted — proceed with this agent
+  SELECTED_AGENT="$AGENT"
+  break
+done
+
+if [[ -z "$SELECTED_AGENT" ]]; then
+  echo "All agents in priority list exhausted — escalate to Opus advisor"
+  # Mark issue BLOCKED and notify
+fi
+```
+
+**Rules:**
+
+- `exhausted: true` in quota.json → skip that agent entirely, try next in priority list
+- Re-run `hooks/detect-tools.sh` every 5 dispatches to refresh quota estimates
+- If all priority agents are exhausted, mark the issue `BLOCKED` and escalate to the Opus advisor
+- After `detect-tools.sh` refreshes quota, an agent previously marked exhausted may become available again
 
 ---
 
