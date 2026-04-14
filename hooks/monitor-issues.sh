@@ -45,7 +45,15 @@ _autoship_md_mtime() {
 
 AUTOSHIP_MD_LAST_MTIME=$(_autoship_md_mtime)
 
-last_check=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+WATERMARK_FILE="$AUTOSHIP_DIR/.issue-monitor-watermark"
+
+# Initialize watermark on first run (capture current time, emit nothing on first loop)
+if [[ ! -f "$WATERMARK_FILE" ]]; then
+  last_check=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  echo "$last_check" > "$WATERMARK_FILE"
+else
+  last_check=$(cat "$WATERMARK_FILE" 2>/dev/null) || last_check=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+fi
 
 while true; do
   sleep 60
@@ -93,4 +101,5 @@ while true; do
   done
 
   last_check=$now
+  echo "$last_check" > "$WATERMARK_FILE"
 done
