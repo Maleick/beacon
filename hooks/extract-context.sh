@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # extract-context.sh — Extract project-specific conventions and config for agents.
-# Output: .autoship/project-context.md (capped at ~3000 chars)
+# Output: .autoship/project-context.md (capped at 1500 chars to force Codex toward implementation)
 
 AUTOSHIP_DIR=".autoship"
 CONTEXT_FILE="$AUTOSHIP_DIR/project-context.md"
@@ -32,17 +32,18 @@ is_safe_repo_file() {
   # 1. Read from .autoship/config.json
   if is_safe_repo_file "$CONFIG_FILE"; then
     echo "### Project Configuration"
-    jq -r 'to_entries | map("- **\(.key)**: \(.value)") | .[]' "$CONFIG_FILE" 2>/dev/null || true
+    jq -r 'to_entries | map("- **\(.key)**: \(.value)") | .[]' "$CONFIG_FILE" 2>/dev/null | head -10 || true
     echo ""
   fi
 
-  # 2. Extract from CLAUDE.md
+  # 2. Extract from CLAUDE.md - only critical sections, strict line limit
   if is_safe_repo_file "CLAUDE.md"; then
-    echo "### Project Conventions (from CLAUDE.md)"
-    # Extract sections whose heading topic is Patterns, Conventions, or Gotchas.
+    echo "### Key Conventions"
+    # Extract ONLY lines under Patterns, Conventions, or Gotchas headings
+    # Stop at first code block to keep it concise
     awk '
       BEGIN { printing = 0; count = 0; }
-      tolower($0) ~ /^#+[[:space:]]*(patterns|conventions|gotchas)/ {
+      tolower($0) ~ /^#+[[:space:]]*(patterns|conventions|gotchas|critical|invariants)/ {
         printing = 1;
         count = 0;
         print $0;
@@ -51,8 +52,11 @@ is_safe_repo_file() {
       /^#+/ {
         if (printing) printing = 0;
       }
+      /^```/ {
+        if (printing) printing = 0;
+      }
       printing {
-        if (count < 40) {
+        if (count < 15) {
           print $0;
           count++;
         } else {
@@ -63,15 +67,15 @@ is_safe_repo_file() {
     echo ""
   fi
 
-  # 3. Read AGENTS.md if present
+  # 3. Read AGENTS.md if present - keep SHORT for Codex context
   if is_safe_repo_file "AGENTS.md"; then
-    echo "### Agent Constraints (from AGENTS.md)"
-    cat "AGENTS.md"
+    echo "### Agent Constraints"
+    head -15 "AGENTS.md"
     echo ""
   fi
 } > "$TEMP_FILE"
 
-# Capping at 3000 chars (~500 tokens proxy)
-head -c 3000 "$TEMP_FILE" > "$CONTEXT_FILE"
+# Capping at 1500 chars (~250 tokens proxy) to force Codex toward implementation
+head -c 1500 "$TEMP_FILE" > "$CONTEXT_FILE"
 
 echo "Project context extracted to $CONTEXT_FILE ($(wc -c < "$CONTEXT_FILE") chars)"

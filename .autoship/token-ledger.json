@@ -218,6 +218,28 @@
           "verdict": "pass",
           "pr_number": 0,
           "attempt": 1
+        },
+        {
+          "number": 131,
+          "type": "medium_code",
+          "complexity": "medium",
+          "agent": "claude-sonnet",
+          "tokens_used": 0,
+          "duration_ms": 0,
+          "verdict": "pass",
+          "pr_number": 0,
+          "attempt": 1
+        },
+        {
+          "number": 137,
+          "type": "medium_code",
+          "complexity": "medium",
+          "agent": "claude-sonnet",
+          "tokens_used": 0,
+          "duration_ms": 0,
+          "verdict": "pass",
+          "pr_number": 0,
+          "attempt": 1
         }
       ]
     }
