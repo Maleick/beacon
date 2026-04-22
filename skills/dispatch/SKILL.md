@@ -102,6 +102,24 @@ fi
 **Codex app-server failure protocol:**
 If `dispatch-codex-appserver.sh` returns STUCK on attempt 1, treat as tool exhaustion and immediately try the next agent in the priority list (gemini > claude-haiku > claude-sonnet) — do not retry codex. Log `CODEX_APPSERVER_STUCK` to poll.log.
 
+**⚠️ CWD HAZARD — Agent-tool (Claude Haiku/Sonnet) dispatch (see bug #2226):**
+
+Each `Bash` tool call in an Agent-tool worker spawns a fresh shell. `cd <worktree>` in one call **does not persist** to the next. If the worker runs `git commit` without re-cd'ing, the commit lands on the **parent session's branch**, not `autoship/issue-<N>`.
+
+**Required mitigation — prefix every bash call:**
+
+```bash
+cd .autoship/workspaces/issue-<N> && <actual command>
+```
+
+Every command the worker runs must include the `cd <worktree> &&` prefix. Do not rely on a setup step that cd's once.
+
+**Preferred alternatives (when available):**
+- **tmux pane dispatch** (Gemini) — pane has persistent cwd, safe by default.
+- **Codex app-server** — passes explicit `cwd` to each invocation, immune to drift.
+
+Agent-tool dispatch is the least safe channel; prefer tmux/Codex for worktree-isolated work when quota allows.
+
 ---
 
 ## Step 1: Create Worktree
