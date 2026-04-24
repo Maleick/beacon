@@ -5,14 +5,14 @@
 
 set -euo pipefail
 
-VERSION_FILE="${CLAUDE_PLUGIN_ROOT:-$(dirname "$(dirname "$0")")}/VERSION"
+VERSION_FILE="${AUTOSHIP_PLUGIN_ROOT:-$(dirname "$(dirname "$0")")}/VERSION"
 VERSION="unknown"
 if [[ -f "$VERSION_FILE" ]]; then
   VERSION="$(cat "$VERSION_FILE")"
 fi
 
 # Run init.sh silently if it exists
-INIT_SCRIPT="${CLAUDE_PLUGIN_ROOT:-$(dirname "$(dirname "$0")")}/hooks/init.sh"
+INIT_SCRIPT="${AUTOSHIP_PLUGIN_ROOT:-$(dirname "$(dirname "$0")")}/hooks/init.sh"
 if [[ -f "$INIT_SCRIPT" ]]; then
   bash "$INIT_SCRIPT" >/dev/null 2>&1 || true
 fi

@@ -57,48 +57,13 @@ fi
 
 ## Step 1: Initial Verification
 
-Spawn reviewer agent:
+Run the OpenCode reviewer hook:
 
+```bash
+bash hooks/opencode/reviewer.sh <issue-key> <worktree-path> <result-path> <test-command>
 ```
-Agent({
-  model: "<configured OpenCode reviewer model>",
-  prompt: "You are an AutoShip verification reviewer. Evaluate whether the agent's work meets acceptance criteria.
 
-## Issue: <issue-title>
-
-## Acceptance Criteria
-<criteria>
-
-## Result File
-$(cat <result-path>)
-
-## Diff
-$(git -C <worktree-path> diff main...HEAD)
-
-## Test Command
-<test-command>
-
-## Process
-1. Validate AUTOSHIP_RESULT.md exists
-2. Review the diff against acceptance criteria
-3. Run tests if command provided
-4. Cross-reference claims in result file
-
-## Output Format
-VERDICT: PASS | FAIL
-CONFIDENCE: HIGH | MEDIUM | LOW
-REASON: <explanation>
-FILES_CHANGED: <count>
-TEST_RESULT: PASS | FAIL | SKIPPED | ERROR
-SPECIFIC_ISSUES:
-  - <issue 1>
-  - <issue 2>
-ACCEPTANCE_CRITERIA_MET:
-  - [x] <criterion 1>
-  - [ ] <criterion 2>",
-  description: "AutoShip reviewer: <issue-key>"
-})
-```
+The reviewer role model is read from `.autoship/model-routing.json` and defaults to `openai/gpt-5.5`.
 
 ---
 

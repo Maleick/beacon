@@ -178,6 +178,5 @@ echo "$REPO_ROOT/hooks" > "$AUTOSHIP_DIR/hooks_dir"
 
 # Sweep stale worktrees
 echo "Scanning for stale worktrees..."
-bash "$REPO_ROOT/hooks/sweep-stale.sh" 2>/dev/null || true
 
 echo "AutoShip OpenCode workspace ready at $AUTOSHIP_DIR"

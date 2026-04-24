@@ -81,14 +81,14 @@ PR creation → GitHub API
 Monitor CI → merge
 ```
 
-## Key Differences from the Old Runtime
+## OpenCode Runtime
 
-| Aspect | Old runtime | OpenCode |
-|--------|-------------|----------|
-| Agent execution | tmux panes | Agent subagents |
-| Status detection | `pane.log` | `status` file |
-| Monitor interval | 5s/30s/60s | 10s polling |
-| Process management | tmux commands | Agent task state |
+| Aspect | OpenCode behavior |
+|--------|-------------------|
+| Worker execution | `opencode run --model <selected-model>` |
+| Status detection | Workspace `status` files |
+| Monitor interval | Hook-driven polling |
+| Process management | Queued workspaces and runner cap |
 
 ## State Files
 

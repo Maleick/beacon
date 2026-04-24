@@ -298,7 +298,7 @@ if [[ -z "$CURRENT" ]]; then
   # Create a new issue entry
   TMP=$(make_tmp)
   jq --arg id "$ISSUE_ID" --arg now "$NOW" \
-    '.issues[$id] = {"state": "unclaimed", "complexity": "medium", "agent": "", "attempt": 1, "worktree": "", "pane_id": "", "started_at": $now, "attempts_history": []}' \
+    '.issues[$id] = {"state": "unclaimed", "complexity": "medium", "agent": "", "attempt": 1, "worktree": "", "started_at": $now, "attempts_history": []}' \
     "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 fi
 

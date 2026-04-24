@@ -109,7 +109,7 @@ while true; do
 
         # Transition state to merged and write completed_at for the linked issue.
         # Look up which issue this PR belongs to by matching pr_number in state.json.
-        # BEACON is gated by the same seen-set as [PR_MERGED] so it fires once per PR.
+        # AutoShip state transition is gated by the same seen-set as [PR_MERGED] so it fires once per PR.
         if [[ -f "$STATE_FILE" ]] && command -v jq >/dev/null 2>&1; then
           ISSUE_ID=$(jq -r --argjson pr "$num" \
             '.issues | to_entries[] | select(.value.pr_number == $pr) | .key' \

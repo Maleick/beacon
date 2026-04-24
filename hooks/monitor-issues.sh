@@ -63,7 +63,7 @@ while true; do
   # --- Hot-reload: re-parse AUTOSHIP.md if it changed since last poll ---
   AUTOSHIP_MD_CURRENT_MTIME=$(_autoship_md_mtime)
   if [[ "$AUTOSHIP_MD_CURRENT_MTIME" != "$AUTOSHIP_MD_LAST_MTIME" ]]; then
-    bash hooks/init.sh 2>/dev/null || true
+    bash hooks/opencode/init.sh 2>/dev/null || true
     echo "AUTOSHIP.md changed — routing config reloaded" >> "$AUTOSHIP_DIR/poll.log"
     AUTOSHIP_MD_LAST_MTIME="$AUTOSHIP_MD_CURRENT_MTIME"
   fi

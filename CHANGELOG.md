@@ -9,4 +9,4 @@
 - Learned worker model selection using task fit, configured strength, cost class, and prior success/failure history.
 - Default active worker cap increased to 15.
 - Unsafe/evasion-prone issues block for human review.
-- Removed legacy runtime, assistant, and pre-rename references from docs and public pages.
+- Removed stale runtime, assistant, and pre-rename references from docs and public pages.

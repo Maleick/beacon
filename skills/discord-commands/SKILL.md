@@ -93,7 +93,7 @@ Reply to Discord:
 
 ### 4b. `skip #N` — Exclude Issue
 
-Add the issue number to the exclusion list in state.json. If the issue has a running agent, note that in the reply.
+Add the issue number to the exclusion list in state.json. If the issue has a running workspace, note that in the reply.
 
 ```bash
 ISSUE_NUM="15"
@@ -103,12 +103,12 @@ jq --arg n "$ISSUE_NUM" '.excluded_issues += [$n] | .excluded_issues |= unique' 
 Check if the issue has a running agent:
 
 ```bash
-RUNNING=$(jq -r --arg n "$ISSUE_NUM" '.issues[$n] | select(.state == "running") | .pane_id // empty' .autoship/state.json)
+RUNNING=$(jq -r --arg n "issue-$ISSUE_NUM" '.issues[$n] | select(.state == "running") | .worktree // empty' .autoship/state.json)
 ```
 
-If a pane is found, the operator may want to cancel it — reply with context:
+If a worktree is found, the operator may want to cancel it — reply with context:
 
-> Skipped #N. Agent running in pane `$RUNNING` — it will finish but no PR will merge.
+> Skipped #N. Worker running in `$RUNNING` — it will finish but no PR will merge.
 
 If no running agent:
 
