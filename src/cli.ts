@@ -129,6 +129,21 @@ async function doctor() {
 
   const configDir = resolveConfigDir();
   const autoshipDir = join(configDir, ".autoship");
+  const opencodeConfigPath = join(configDir, "opencode.json");
+
+  try {
+    const opencodeConfig = await loadConfig(opencodeConfigPath);
+    const plugins = Array.isArray(opencodeConfig.plugin) ? opencodeConfig.plugin : [];
+    if (plugins.includes("opencode-autoship")) {
+      checks.push({ name: "package-registration", status: "PASS", message: "opencode-autoship is registered in opencode.json" });
+    } else {
+      checks.push({ name: "package-registration", status: "FAIL", message: "opencode.json does not register opencode-autoship; run opencode-autoship install" });
+      hasFailure = true;
+    }
+  } catch {
+    checks.push({ name: "package-registration", status: "FAIL", message: "Unable to read opencode.json; run opencode-autoship install" });
+    hasFailure = true;
+  }
 
   try {
     await access(join(autoshipDir, ".onboarded"));
@@ -174,6 +189,27 @@ async function doctor() {
     checks.push({ name: "skills", status: "PASS", message: "Skills directory exists" });
   } catch {
     checks.push({ name: "skills", status: "FAIL", message: "Skills directory not found" });
+    hasFailure = true;
+  }
+
+  try {
+    await access(join(autoshipDir, "AGENTS.md"));
+    checks.push({ name: "agents-guide", status: "PASS", message: "AGENTS.md is installed" });
+  } catch {
+    checks.push({ name: "agents-guide", status: "FAIL", message: "AGENTS.md not found; run opencode-autoship install" });
+    hasFailure = true;
+  }
+
+  try {
+    const assetVersion = (await readFile(join(autoshipDir, "VERSION"), "utf8")).trim();
+    if (assetVersion === VERSION) {
+      checks.push({ name: "asset-version", status: "PASS", message: `Installed assets match package ${VERSION}` });
+    } else {
+      checks.push({ name: "asset-version", status: "FAIL", message: `Installed asset version ${assetVersion} does not match package ${VERSION}; run opencode-autoship install` });
+      hasFailure = true;
+    }
+  } catch {
+    checks.push({ name: "asset-version", status: "FAIL", message: "Installed VERSION not found; run opencode-autoship install" });
     hasFailure = true;
   }
 

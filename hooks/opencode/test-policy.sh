@@ -319,13 +319,22 @@ cp -R "$SCRIPT_DIR/../.." "$PACKAGE_REPO"
   cmp "$TMP_DIR/doctor-fail-1.txt" "$TMP_DIR/doctor-fail-2.txt" >/dev/null || fail "doctor failure output is deterministic"
   grep -F '[FAIL]' "$TMP_DIR/doctor-fail-1.txt" >/dev/null || fail "doctor prints FAIL checks"
   grep -F '[WARN]' "$TMP_DIR/doctor-fail-1.txt" >/dev/null || fail "doctor prints WARN checks"
+  grep -F 'opencode-autoship install' "$TMP_DIR/doctor-fail-1.txt" >/dev/null || fail "doctor failure output includes package install remediation"
+  printf '%s\n' '{"plugin":["opencode-autoship"]}' > "$DOCTOR_CONFIG/opencode.json"
   mkdir -p "$DOCTOR_CONFIG/.autoship/hooks" "$DOCTOR_CONFIG/.autoship/commands" "$DOCTOR_CONFIG/.autoship/skills"
   printf '{}\n' > "$DOCTOR_CONFIG/.autoship/config.json"
   printf '{}\n' > "$DOCTOR_CONFIG/.autoship/model-routing.json"
+  cp AGENTS.md "$DOCTOR_CONFIG/.autoship/AGENTS.md"
+  cp VERSION "$DOCTOR_CONFIG/.autoship/VERSION"
   date -u +%Y-%m-%dT%H:%M:%SZ > "$DOCTOR_CONFIG/.autoship/.onboarded"
   OPENCODE_CONFIG_DIR="$DOCTOR_CONFIG" node dist/cli.js doctor >/"$TMP_DIR/doctor-pass.txt"
   grep -F '[PASS]' "$TMP_DIR/doctor-pass.txt" >/dev/null || fail "doctor prints PASS checks"
   grep -F '0 failed' "$TMP_DIR/doctor-pass.txt" >/dev/null || fail "doctor summary reports zero failures"
+  printf 'v0.0.0\n' > "$DOCTOR_CONFIG/.autoship/VERSION"
+  if OPENCODE_CONFIG_DIR="$DOCTOR_CONFIG" node dist/cli.js doctor >/"$TMP_DIR/doctor-version-fail.txt" 2>&1; then
+    fail "doctor fails when installed asset version does not match package"
+  fi
+  grep -F 'asset version' "$TMP_DIR/doctor-version-fail.txt" >/dev/null || fail "doctor reports mismatched asset version"
 )
 
 bash "$SCRIPT_DIR/test-model-parsing.sh" >/dev/null
