@@ -67,6 +67,30 @@ The selected routing is saved to `.autoship/model-routing.json`. Edit that file 
 - Worker selection: best configured model per task, with free, Spark, Go-provider, and other selected models eligible when available
 - Unsafe issue handling: block / human-required
 
+## How It Works
+
+```mermaid
+flowchart LR
+    A[GitHub issues<br/>agent:ready] --> B[GPT-5.5 planner]
+    B --> C[Safety filter]
+    C -->|safe| D[Model selector]
+    C -->|unsafe| H[Human review]
+    D --> E[OpenCode worker<br/>free / Spark / Go / selected]
+    E --> F[GPT-5.5 reviewer]
+    F -->|pass| G[Pull request]
+    F -->|fail| D
+```
+
+```mermaid
+flowchart TD
+    A[Live opencode models] --> B[setup.sh]
+    B --> C[.autoship/model-routing.json]
+    C --> D[select-model.sh]
+    E[model-history.json] --> D
+    F[task type] --> D
+    D --> G[best worker for task]
+```
+
 ## Commands
 
 | Command | Purpose |
