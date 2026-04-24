@@ -125,5 +125,5 @@ All locked architectural decisions with rationale. These were finalized during t
 | v2-8  | Autoresearch     | Automatic for Claude Sonnet/complex agents only             |
 | v2-9  | Merge gates      | CI green (simple), CI + review (medium/complex)             |
 | v2-10 | Repo scope       | Single repo per session                                     |
-| v2-13 | Plugin format    | Multi-skill Claude Code plugin with marketplace auto-update |
+| v2-13 | Plugin format    | Multi-skill OpenCode plugin with repo-local bootstrap |
 | v2-14 | Tmux layout      | Grid (tiled) not stacked                                    |

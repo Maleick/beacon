@@ -9,7 +9,7 @@ Updated: 2026-04-12
 
 AutoShip v3 inverts the orchestration model. Instead of Opus running a constant loop and spawning workers, **Sonnet is the executor** — it reacts to events, handles dispatch, and runs the pipeline. **Opus is the advisor** — called only at strategic decision points where higher intelligence changes the outcome.
 
-This mirrors Anthropic's Advisor tool pattern (API beta `advisor-tool-2026-03-01`), adapted for the Claude Code plugin runtime using native Agent spawning and the Monitor tool.
+This mirrors Anthropic's Advisor tool pattern (API beta `advisor-tool-2026-03-01`), adapted for the OpenCode runtime with legacy Claude compatibility using native Agent spawning and the Monitor tool.
 
 ### Core Principles
 

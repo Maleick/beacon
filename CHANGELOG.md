@@ -246,7 +246,7 @@ _2026-04-12_
 
 ## Beacon v0.1
 
-First public release of Beacon — autonomous multi-agent GitHub issue orchestration for Claude Code.
+First public release of Beacon — autonomous multi-agent GitHub issue orchestration for the legacy Claude Code runtime.
 
 ### What's included
 
@@ -267,7 +267,7 @@ First public release of Beacon — autonomous multi-agent GitHub issue orchestra
 
 ### Requirements
 
-- Claude Code with plugin support
+- Legacy Claude Code with plugin support
 - `jq`, `gh` (authenticated)
 - Optional: `codex`, `gemini`, or `grok` CLI for quota efficiency
 
@@ -279,4 +279,3 @@ First public release of Beacon — autonomous multi-agent GitHub issue orchestra
 | `/beacon status` | Show agents, quota, progress |
 | `/beacon stop` | Stop all agents |
 | `/beacon plan` | Analyze without dispatching |
-

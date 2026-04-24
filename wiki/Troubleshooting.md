@@ -151,7 +151,7 @@ git push --force-with-lease
 
 ### Commands not being processed
 
-Check that the Discord channel is connected (`--channels` flag on the Claude Code session). Check `.autoship/discord-last-seen.json` for the last processed timestamp.
+Check that the Discord channel is connected (`--channels` flag on the OpenCode session). Check `.autoship/discord-last-seen.json` for the last processed timestamp.
 
 ### Webhook events not triggering dispatch
 

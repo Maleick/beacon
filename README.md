@@ -30,7 +30,7 @@
 
 ---
 
-A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin that autonomously routes GitHub issues to AI agents — Codex, Gemini, Copilot, or Claude — verifies their work, opens pull requests, merges them, and loops back for the next one. One command starts the loop. You watch it ship.
+An [OpenCode](https://opencode.ai) plugin that autonomously routes GitHub issues to AI agents — Codex, Gemini, Copilot, or Claude — verifies their work, opens pull requests, merges them, and loops back for the next one. One command starts the loop. You watch it ship.
 
 ```
 ┌──────────────────────────────────────────┐
@@ -88,6 +88,7 @@ You come back to merged PRs.
 
 **Same issues. One command. Brain free.**
 
+- **OpenCode-first** — OpenCode is the only supported runtime path
 - **Third-party first** — burns Codex, Gemini, and Copilot quota before touching Claude tokens
 - **Parallel workers** — up to 20 issues in flight simultaneously
 - **Task-type routing** — classifies issues into 8 categories (incl. `rust_unsafe`), routes each to the best agent
@@ -103,17 +104,26 @@ You come back to merged PRs.
 
 ## Install
 
+### OpenCode install
+
 ```bash
-claude plugin marketplace add Maleick/AutoShip && claude plugin install autoship@autoship
+bash hooks/opencode/install.sh
 ```
 
-Done. Start a new session and run `/autoship:start`.
+Done. Start a new session and run `/autoship`.
+
+### Install
+
+```bash
+bash hooks/opencode/install.sh
+```
+
+AutoShip checks the latest GitHub release during install and startup, then updates the local OpenCode plugin copy.
 
 ### Requirements
 
 - `jq` — JSON processing (`brew install jq`)
 - `gh` — GitHub CLI, authenticated (`brew install gh && gh auth login`)
-- `tmux` — terminal multiplexer (`brew install tmux`)
 - Git repo with a GitHub remote and open issues
 
 ### Optional agents (more dispatch power)
@@ -123,11 +133,13 @@ Done. Start a new session and run `/autoship:start`.
 | `codex`         | OpenAI-powered workers via JSON-RPC app-server (preferred for simple/medium) | [Codex CLI](https://github.com/openai/codex)              |
 | `gemini`        | Google-powered workers                                                       | [Gemini CLI](https://github.com/google-gemini/gemini-cli) |
 | `gh copilot`    | GitHub Copilot workers                                                       | `gh extension install github/gh-copilot`                  |
-| Claude fallback | Always available — no install needed                                         | built-in                                                  |
+| Claude models   | Available as providers                                                       | built-in                                                  |
 
 AutoShip detects available tools at startup and routes work accordingly.
 
 ## Commands
+
+### OpenCode Commands
 
 | Command            | What it does                                                             |
 | ------------------ | ------------------------------------------------------------------------ |
@@ -135,6 +147,16 @@ AutoShip detects available tools at startup and routes work accordingly.
 | `/autoship:plan`   | Dry run — analyze issues and show dispatch plan without executing        |
 | `/autoship:stop`   | Gracefully stop all agents, save state, add `autoship:paused` labels     |
 | `/autoship:status` | Live dashboard — active agents, quota bars, PR backlog, token spend      |
+
+### OpenCode Commands
+
+| Command            | What it does                                                             |
+| ------------------ | ------------------------------------------------------------------------ |
+| `/autoship`        | Start orchestration                                                     |
+| `/autoship-status` | Show current status                                                     |
+| `/autoship-plan`   | Dry run — analyze issues without executing                               |
+| `/autoship-setup`  | First-run configuration wizard                                           |
+| `/autoship-stop`   | Gracefully stop orchestration                                           |
 
 ## How It Works
 
@@ -255,6 +277,15 @@ If you kill the session and restart, `/autoship:start` reads the labels and pick
 
 Four-tier model: **Bash watches → Haiku thinks → Sonnet orchestrates → Opus advises**
 
+### Platform Differences
+
+| Aspect | OpenCode |
+|--------|-------------|----------|
+| Agent execution | tmux panes | Agent subagents |
+| Status detection | `pane.log` files | Status files in worktree |
+| Monitors | 3 tmux-aware scripts | File polling scripts |
+| Process management | `tmux kill-pane` | Agent task state |
+
 ```mermaid
 flowchart LR
     subgraph Monitors["🔭 Monitors (bash)"]
@@ -264,22 +295,22 @@ flowchart LR
     end
 
     subgraph Triage["🧠 Triage"]
-        H["Claude Haiku\nEvent Interpreter"]
+        H["Haiku\nEvent Interpreter"]
     end
 
     subgraph Executor["⚙️ Executor"]
-        S["Claude Sonnet\nOrchestrator"]
+        S["Sonnet\nOrchestrator"]
     end
 
     subgraph Advisor["🎯 Advisor"]
-        O["Claude Opus\nStrategic Decisions"]
+        O["Opus\nStrategic Decisions"]
     end
 
     subgraph Workers["🤖 Workers"]
         W1[Codex]
         W2[Gemini]
         W3[Copilot]
-        W4[Claude Haiku\nor Sonnet]
+        W4[Haiku\nor Sonnet]
     end
 
     Monitors -->|events| H
@@ -292,43 +323,66 @@ flowchart LR
 | Tier     | Role                                                  | Model                   |
 | -------- | ----------------------------------------------------- | ----------------------- |
 | Monitors | 3 bash scripts watching agents, PRs, issues           | bash                    |
-| Triage   | Interprets events, categorizes issues, queues actions | Claude Haiku            |
-| Executor | Orchestration, dispatch, verification, PR pipeline    | Claude Sonnet           |
-| Advisor  | Strategic decisions, UltraPlan, escalations           | Claude Opus             |
-| Workers  | Actual code changes                                   | Codex / Gemini / Claude |
+| Triage   | Interprets events, categorizes issues, queues actions | Haiku            |
+| Executor | Orchestration, dispatch, verification, PR pipeline    | Sonnet           |
+| Advisor  | Strategic decisions, UltraPlan, escalations           | Opus             |
+| Workers  | Actual code changes                                   | Codex / Gemini / Claude models |
 
 ### Plugin Structure
 
 ```
-.claude-plugin/
-  plugin.json         ← hooks + metadata
-  marketplace.json    ← one-liner install target
+plugins/                     # OpenCode plugin entrypoint
+  plugin.json
+  marketplace.json
 hooks/
-  activate.sh         ← SessionStart: init + system context injection
-  init.sh             ← .autoship/ directory structure
-  detect-tools.sh            ← detect Codex/Gemini/Copilot + quota
-  monitor-agents.sh          ← watch pane.log for status words (5s)
-  monitor-prs.sh             ← watch PR CI + merge status (30s)
-  monitor-issues.sh          ← poll GitHub for new/closed issues (60s)
-  update-state.sh            ← write issue state + token counts
-  cleanup-worktree.sh        ← archive result, remove worktree, close issue
-  quota-update.sh            ← decay-based API quota estimation
-  classify-issue.sh          ← label issues by task type (8 categories)
-  dispatch-codex-appserver.sh← drive Codex via JSON-RPC (no tmux)
-  emit-event.sh              ← atomic flock write to event-queue.json
-skills/
-  orchestrate/             ← orchestration protocol (v3)
-  dispatch/           ← agent dispatch (worktree, prompt, third-party first)
-  verify/             ← post-completion pipeline (verify, PR, merge)
-  status/             ← status dashboard with quota bars
-  poll/               ← GitHub issue sync safety net
+  activate.sh               # SessionStart: init
+  init.sh                   # .autoship/ directory structure
+  detect-tools.sh           # detect Codex/Gemini/Copilot + quota
+  monitor-agents.sh         # watch status files for agent state
+  monitor-prs.sh            # watch PR CI + merge status
+  monitor-issues.sh         # poll GitHub for new/closed issues
+  update-state.sh           # write issue state + token counts
+  cleanup-worktree.sh       # archive result, remove worktree, close issue
+  quota-update.sh           # decay-based API quota estimation
+  classify-issue.sh         # label issues by task type
+  dispatch-codex-appserver.sh
+  emit-event.sh             # atomic flock write to event-queue.json
+  opencode/                 # OpenCode-specific hooks
+    init.sh
+    monitor-agents.sh
+    classify-issue.sh
+    cleanup-worktree.sh
+skills/                     # OpenCode skills
+  orchestrate/
+  dispatch/
+  verify/
+  status/
+  poll/
+skills/                     # OpenCode skills
+  autoship-orchestrate/
+  autoship-dispatch/
+  autoship-verify/
+  autoship-status/
+  autoship-poll/
+  autoship-setup/
+  autoship-discord-webhook/
+  autoship-discord-commands/
 agents/
-  haiku-triage.md     ← event triage agent
-  reviewer.md         ← verification reviewer
-commands/
-  start.md / stop.md / plan.md / status.md / autoship.md
-AUTOSHIP.md             ← routing matrix + quota config (YAML front matter, hot-reload)
-```
+  haiku-triage.md
+  reviewer.md
+commands/                   # OpenCode commands
+  start.md
+  stop.md
+  plan.md
+  status.md
+  autoship.md
+commands/                   # OpenCode commands
+  autoship.md
+  autoship-start.md
+  autoship-stop.md
+  autoship-plan.md
+  autoship-status.md
+AUTOSHIP.md                 # routing matrix + quota config
 
 ## Benchmarks
 

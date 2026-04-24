@@ -166,20 +166,15 @@ Tracks the last-processed Discord message timestamp to avoid reprocessing comman
 
 ## Environment
 
-No shell environment variables are required at the project level. Global Claude Code settings at `~/.claude/settings.json` control model routing:
+No shell environment variables are required at the project level. Global OpenCode settings at `~/.config/opencode/opencode.json` control model routing:
 
 ```json
 {
-  "env": {
-    "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet",
-    "CLAUDE_CODE_DISABLE_1M_CONTEXT": "1",
-    "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING": "1",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-sonnet-4-6"
-  }
+  "plugin": ["file:///Users/maleick/.config/opencode/plugins/autoship.ts"]
 }
 ```
 
-These settings make Sonnet the default for all subagents while keeping Opus available for advisor calls.
+This keeps the OpenCode plugin loaded at startup while leaving Claude models available for fallback and advisor calls.
 
 ---
 

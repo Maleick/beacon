@@ -1,6 +1,6 @@
 # AutoShip Wiki
 
-Autonomous multi-agent orchestration plugin for Claude Code.
+Autonomous multi-agent orchestration plugin for OpenCode, with Claude compatibility preserved.
 
 ## Latest Release: [v1.4.0](v1.4.0-Release-Notes)
 

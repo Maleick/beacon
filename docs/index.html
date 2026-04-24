@@ -4,9 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AutoShip — ship GitHub issues on autopilot</title>
-  <meta name="description" content="AutoShip is a Claude Code plugin that autonomously routes GitHub issues to AI agents, verifies results, opens PRs, and merges them. One command starts the loop." />
+  <meta name="description" content="AutoShip is an OpenCode plugin that autonomously routes GitHub issues to AI agents, verifies results, opens PRs, and merges them." />
   <meta property="og:title" content="AutoShip — ship GitHub issues on autopilot" />
-  <meta property="og:description" content="Autonomous multi-agent orchestration for Claude Code. Routes GitHub issues to Codex, Gemini, Copilot, or Claude — verifies results, opens PRs, merges." />
+  <meta property="og:description" content="Autonomous multi-agent orchestration for OpenCode. Routes GitHub issues to Codex, Gemini, Copilot, or Claude — verifies results, opens PRs, merges." />
   <meta property="og:image" content="https://raw.githubusercontent.com/Maleick/AutoShip/main/assets/autoship-banner.svg" />
   <meta name="twitter:card" content="summary_large_image" />
   <style>
@@ -209,7 +209,7 @@
     <a href="#agents">Agents</a>
     <a href="https://github.com/Maleick/AutoShip">GitHub</a>
   </div>
-  <a class="nav-cta" href="https://github.com/Maleick/AutoShip#install">Install</a>
+  <a class="nav-cta" href="https://github.com/Maleick/AutoShip/blob/main/docs/OPENCODE_INSTALL.md">Install</a>
 </nav>
 
 <!-- Hero -->
@@ -221,13 +221,12 @@
     <img src="https://img.shields.io/github/stars/Maleick/AutoShip?style=flat&color=f59e0b" alt="Stars" />
     <img src="https://img.shields.io/github/v/release/Maleick/AutoShip?style=flat" alt="Version" />
     <img src="https://img.shields.io/github/license/Maleick/AutoShip?style=flat" alt="License" />
-    <img src="https://img.shields.io/badge/Claude_Code-plugin-blue?style=flat" alt="Claude Code Plugin" />
+    <img src="https://img.shields.io/badge/OpenCode-first-brightgreen?style=flat" alt="OpenCode First" />
   </div>
 
   <p class="hero-desc">
-    A <strong>Claude Code plugin</strong> that autonomously routes GitHub issues to AI agents,
+    An <strong>OpenCode-first plugin</strong> that autonomously routes GitHub issues to AI agents,
     verifies their work, opens pull requests, and merges them.
-    <strong>One command starts the loop.</strong>
   </p>
 
   <div class="hero-actions">
@@ -238,8 +237,8 @@
   <div class="install-box">
     <div class="install-header">bash — one-time install</div>
     <div class="install-cmd">
-      <code>claude plugin marketplace add Maleick/AutoShip &amp;&amp; claude plugin install autoship@autoship</code>
-      <button class="copy-btn" onclick="navigator.clipboard.writeText('claude plugin marketplace add Maleick/AutoShip && claude plugin install autoship@autoship').then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)})">Copy</button>
+      <code>bash hooks/opencode/install.sh</code>
+      <button class="copy-btn" onclick="navigator.clipboard.writeText('bash hooks/opencode/install.sh').then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)})">Copy</button>
     </div>
   </div>
 </div>
@@ -450,17 +449,17 @@
 <section style="text-align:center; padding: 72px 24px;">
   <h2 style="font-size:2rem;">Ready to <span style="color:var(--amber);">stop babysitting issues?</span></h2>
   <p style="color:var(--muted);max-width:480px;margin:16px auto 36px;font-size:1.05rem;">One install. One command. Your backlog ships itself.</p>
-  <a class="btn-primary" href="https://github.com/Maleick/AutoShip#install" style="font-size:1.1rem;padding:15px 36px;">
+  <a class="btn-primary" href="https://github.com/Maleick/AutoShip/blob/main/docs/OPENCODE_INSTALL.md" style="font-size:1.1rem;padding:15px 36px;">
     Install AutoShip →
   </a>
   <p style="margin-top:20px;color:var(--muted);font-size:0.85rem;">
-    Requires Claude Code · <a href="https://github.com/Maleick/AutoShip">View on GitHub</a>
+    Requires OpenCode · <a href="https://github.com/Maleick/AutoShip">View on GitHub</a>
   </p>
 </section>
 
 <footer>
   <p>AutoShip — MIT License · <a href="https://github.com/Maleick/AutoShip">github.com/Maleick/AutoShip</a></p>
-  <p style="margin-top:6px;">Built with <a href="https://docs.anthropic.com/en/docs/claude-code">Claude Code</a></p>
+  <p style="margin-top:6px;">Built for <a href="https://opencode.ai">OpenCode</a></p>
 </footer>
 
 </body>
