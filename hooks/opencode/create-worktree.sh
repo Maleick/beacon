@@ -24,10 +24,10 @@ fi
 
 git fetch origin master --quiet 2>/dev/null || git fetch origin main --quiet 2>/dev/null || true
 
-if ! git worktree add -B "$TARGET_BRANCH" "$WORKSPACE" "$BASE_REF" 2>/dev/null; then
-  git worktree remove --force "$WORKSPACE" 2>/dev/null || true
+if ! git worktree add -B "$TARGET_BRANCH" "$WORKSPACE" "$BASE_REF" >/dev/null 2>&1; then
+  git worktree remove --force "$WORKSPACE" >/dev/null 2>&1 || true
   rm -rf "$WORKSPACE"
-  git worktree add -B "$TARGET_BRANCH" "$WORKSPACE" "$BASE_REF"
+  git worktree add -B "$TARGET_BRANCH" "$WORKSPACE" "$BASE_REF" >/dev/null
 fi
 
 rm -f \

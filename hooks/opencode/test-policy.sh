@@ -166,7 +166,9 @@ mkdir -p "$WORKTREE_REPO/.autoship/workspaces/issue-156"
 printf 'stale\n' > "$WORKTREE_REPO/.autoship/workspaces/issue-156/AUTOSHIP_RESULT.md"
 (
   cd "$WORKTREE_REPO"
-  bash "$SCRIPT_DIR/create-worktree.sh" issue-156 autoship/issue-156 >/dev/null
+  worktree_output=$(bash "$SCRIPT_DIR/create-worktree.sh" issue-156 autoship/issue-156)
+  expected_worktree_path="$(git rev-parse --show-toplevel)/.autoship/workspaces/issue-156"
+  assert_eq "$expected_worktree_path" "$worktree_output" "create-worktree prints only the workspace path on stdout"
 )
 test -d "$WORKTREE_REPO/.autoship/workspaces/issue-156/.git" || test -f "$WORKTREE_REPO/.autoship/workspaces/issue-156/.git" || fail "create-worktree replaces stale existing workspace directory"
 test ! -e "$WORKTREE_REPO/.autoship/workspaces/issue-156/AUTOSHIP_RESULT.md" || fail "create-worktree clears stale AutoShip artifacts after recovery"
