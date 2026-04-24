@@ -43,4 +43,11 @@ EOF
 (
   cd "$WORKTREE_PATH"
   opencode run --model "$MODEL" "$(cat "$PROMPT_FILE")"
-)
+) || {
+  echo "VERDICT: FAIL — reviewer model failed"
+  REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+  if [[ -x "$REPO_ROOT/hooks/capture-failure.sh" ]]; then
+    bash "$REPO_ROOT/hooks/capture-failure.sh" reviewer_rejection "$ISSUE_KEY" "error_summary=reviewer model failed with non-zero exit" 2>/dev/null || true
+  fi
+  exit 1
+}
