@@ -183,6 +183,42 @@ printf 'stale\n' > "$WORKTREE_REPO/.autoship/workspaces/issue-156/AUTOSHIP_RESUL
 test -d "$WORKTREE_REPO/.autoship/workspaces/issue-156/.git" || test -f "$WORKTREE_REPO/.autoship/workspaces/issue-156/.git" || fail "create-worktree replaces stale existing workspace directory"
 test ! -e "$WORKTREE_REPO/.autoship/workspaces/issue-156/AUTOSHIP_RESULT.md" || fail "create-worktree clears stale AutoShip artifacts after recovery"
 
+MERGE_REPO="$TMP_DIR/merge-repo"
+mkdir -p "$MERGE_REPO/bin"
+git init -q "$MERGE_REPO"
+git -C "$MERGE_REPO" config user.email autoship@example.invalid
+git -C "$MERGE_REPO" config user.name AutoShip
+printf 'base\n' > "$MERGE_REPO/README.md"
+git -C "$MERGE_REPO" add README.md
+git -C "$MERGE_REPO" commit -q -m initial
+mkdir -p "$MERGE_REPO/hooks/opencode" "$MERGE_REPO/.autoship/workspaces"
+cp "$SCRIPT_DIR/cleanup-worktree.sh" "$MERGE_REPO/hooks/opencode/cleanup-worktree.sh"
+cp "$SCRIPT_DIR/merge-pr.sh" "$MERGE_REPO/hooks/opencode/merge-pr.sh"
+chmod +x "$MERGE_REPO/hooks/opencode/cleanup-worktree.sh" "$MERGE_REPO/hooks/opencode/merge-pr.sh"
+cat > "$MERGE_REPO/.autoship/state.json" <<'JSON'
+{"repo":"owner/repo","issues":{"issue-210":{"state":"completed"}},"stats":{},"config":{"maxConcurrentAgents":15}}
+JSON
+git -C "$MERGE_REPO" branch autoship/issue-210
+git -C "$MERGE_REPO" worktree add -q "$MERGE_REPO/.autoship/workspaces/issue-210" autoship/issue-210
+printf 'result\n' > "$MERGE_REPO/.autoship/workspaces/issue-210/AUTOSHIP_RESULT.md"
+cat > "$MERGE_REPO/bin/gh" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$GH_ARGS_LOG"
+exit 0
+SH
+chmod +x "$MERGE_REPO/bin/gh"
+(
+  cd "$MERGE_REPO"
+  GH_ARGS_LOG="$MERGE_REPO/gh-args.log" PATH="$MERGE_REPO/bin:$PATH" bash hooks/opencode/merge-pr.sh 210 issue-210 >/dev/null
+)
+test ! -d "$MERGE_REPO/.autoship/workspaces/issue-210" || fail "merge cleanup removes issue worktree before branch deletion"
+if git -C "$MERGE_REPO" show-ref --verify --quiet refs/heads/autoship/issue-210; then
+  fail "merge cleanup deletes the local issue branch"
+fi
+if grep -F -- '--delete-branch' "$MERGE_REPO/gh-args.log" >/dev/null 2>&1; then
+  fail "merge cleanup must not ask gh to delete a branch that is checked out by an issue worktree"
+fi
+
 SETUP_REPO="$TMP_DIR/setup-repo"
 mkdir -p "$SETUP_REPO/bin"
 cp -R "$SCRIPT_DIR/../.." "$SETUP_REPO/autoship"
