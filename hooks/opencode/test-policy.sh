@@ -219,6 +219,47 @@ if grep -F -- '--delete-branch' "$MERGE_REPO/gh-args.log" >/dev/null 2>&1; then
   fail "merge cleanup must not ask gh to delete a branch that is checked out by an issue worktree"
 fi
 
+REPORT_REPO="$TMP_DIR/report-repo"
+mkdir -p "$REPORT_REPO/.autoship/failures" "$REPORT_REPO/.autoship/reports" "$REPORT_REPO/hooks/opencode"
+git init -q "$REPORT_REPO"
+cp "$SCRIPT_DIR/self-improvement-report.sh" "$REPORT_REPO/hooks/opencode/self-improvement-report.sh"
+chmod +x "$REPORT_REPO/hooks/opencode/self-improvement-report.sh"
+cat > "$REPORT_REPO/.autoship/failures/20260424T010000Z-issue-101.json" <<'JSON'
+{
+  "issue": "issue-101",
+  "failure_category": "model_failure",
+  "model": "opencode/paid-model",
+  "workspace": "/tmp/workspaces/issue-101",
+  "hook": "hooks/opencode/runner.sh",
+  "logs": "Error: Insufficient balance. Manage your billing here",
+  "error_summary": "Insufficient balance",
+  "timestamp": "2026-04-24T01:00:00Z"
+}
+JSON
+cat > "$REPORT_REPO/.autoship/failures/20260424T020000Z-issue-102.json" <<'JSON'
+{
+  "issue": "issue-102",
+  "failure_category": "model_failure",
+  "model": "opencode/paid-model",
+  "workspace": "/tmp/workspaces/issue-102",
+  "hook": "hooks/opencode/runner.sh",
+  "logs": "Error: Insufficient balance. Manage your billing here",
+  "error_summary": "Insufficient balance",
+  "timestamp": "2026-04-24T02:00:00Z"
+}
+JSON
+REPORT_OUTPUT="$REPORT_REPO/.autoship/reports/self-improvement.md"
+(
+  cd "$REPORT_REPO"
+  bash hooks/opencode/self-improvement-report.sh > "$REPORT_OUTPUT"
+)
+grep -F '## Root Cause Evidence' "$REPORT_OUTPUT" >/dev/null || fail "self-improvement report includes root cause evidence section"
+grep -F 'model_failure' "$REPORT_OUTPUT" >/dev/null || fail "self-improvement report includes recurring failure category"
+grep -F 'Insufficient balance' "$REPORT_OUTPUT" >/dev/null || fail "self-improvement report includes log-backed root cause evidence"
+grep -F 'hooks/opencode/runner.sh' "$REPORT_OUTPUT" >/dev/null || fail "self-improvement report includes affected files"
+grep -F '## Candidate Acceptance Criteria' "$REPORT_OUTPUT" >/dev/null || fail "self-improvement report includes candidate acceptance criteria"
+grep -F 'paid model balance failures fall back to a configured free model' "$REPORT_OUTPUT" >/dev/null || fail "self-improvement report proposes evidence-backed acceptance criteria"
+
 SETUP_REPO="$TMP_DIR/setup-repo"
 mkdir -p "$SETUP_REPO/bin"
 cp -R "$SCRIPT_DIR/../.." "$SETUP_REPO/autoship"
