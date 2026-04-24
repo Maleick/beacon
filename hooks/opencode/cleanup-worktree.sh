@@ -12,7 +12,7 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 cd "$REPO_ROOT"
 
 # Validate issue key format
-if [[ ! "$ISSUE_KEY" =~ ^issue-[0-9]+ ]]; then
+if [[ ! "$ISSUE_KEY" =~ ^issue-[0-9]+$ ]]; then
   echo "Error: Invalid issue key format: $ISSUE_KEY"
   exit 1
 fi
@@ -29,14 +29,15 @@ fi
 
 # Remove worktree
 if [[ -d "$WORKSPACE_DIR" ]]; then
+  git worktree prune >/dev/null 2>&1 || true
   git worktree remove "$WORKSPACE_DIR" --force 2>/dev/null || true
   echo "Removed worktree: $WORKSPACE_DIR"
 fi
 
 # Delete branch
 BRANCH="autoship/$ISSUE_KEY"
-if git branch --list "$BRANCH" >/dev/null 2>&1; then
-  git branch -D "$BRANCH" 2>/dev/null || true
+if [[ -n "$(git branch --list "$BRANCH")" ]]; then
+  git branch -D "$BRANCH"
   echo "Deleted branch: $BRANCH"
 fi
 
