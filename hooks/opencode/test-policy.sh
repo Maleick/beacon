@@ -154,6 +154,23 @@ JSON
 expected_version=$(tr -d '[:space:]' < "$SCRIPT_DIR/../../VERSION")
 assert_eq "$expected_version" "$(jq -r '.autoship_version' "$INIT_REPO/.autoship/state.json")" "init refreshes autoship_version from VERSION file"
 
+WORKTREE_REPO="$TMP_DIR/worktree-repo"
+mkdir -p "$WORKTREE_REPO"
+git init -q "$WORKTREE_REPO"
+git -C "$WORKTREE_REPO" config user.email autoship@example.invalid
+git -C "$WORKTREE_REPO" config user.name AutoShip
+printf 'base\n' > "$WORKTREE_REPO/README.md"
+git -C "$WORKTREE_REPO" add README.md
+git -C "$WORKTREE_REPO" commit -q -m initial
+mkdir -p "$WORKTREE_REPO/.autoship/workspaces/issue-156"
+printf 'stale\n' > "$WORKTREE_REPO/.autoship/workspaces/issue-156/AUTOSHIP_RESULT.md"
+(
+  cd "$WORKTREE_REPO"
+  bash "$SCRIPT_DIR/create-worktree.sh" issue-156 autoship/issue-156 >/dev/null
+)
+test -d "$WORKTREE_REPO/.autoship/workspaces/issue-156/.git" || test -f "$WORKTREE_REPO/.autoship/workspaces/issue-156/.git" || fail "create-worktree replaces stale existing workspace directory"
+test ! -e "$WORKTREE_REPO/.autoship/workspaces/issue-156/AUTOSHIP_RESULT.md" || fail "create-worktree clears stale AutoShip artifacts after recovery"
+
 SETUP_REPO="$TMP_DIR/setup-repo"
 mkdir -p "$SETUP_REPO/bin"
 cp -R "$SCRIPT_DIR/../.." "$SETUP_REPO/autoship"

@@ -26,6 +26,7 @@ git fetch origin master --quiet 2>/dev/null || git fetch origin main --quiet 2>/
 
 if ! git worktree add -B "$TARGET_BRANCH" "$WORKSPACE" "$BASE_REF" 2>/dev/null; then
   git worktree remove --force "$WORKSPACE" 2>/dev/null || true
+  rm -rf "$WORKSPACE"
   git worktree add -B "$TARGET_BRANCH" "$WORKSPACE" "$BASE_REF"
 fi
 
