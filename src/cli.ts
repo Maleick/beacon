@@ -213,6 +213,60 @@ async function doctor() {
     hasFailure = true;
   }
 
+  const { exec } = await import("node:child_process");
+  const execAsync = (cmd: string): Promise<string> => new Promise((resolve, reject) => {
+    exec(cmd, { encoding: "utf8", timeout: 30000 }, (err, stdout) => {
+      if (err) reject(err);
+      else resolve(stdout);
+    });
+  });
+
+  try {
+    const modelsOutput = await execAsync("opencode models");
+    if (modelsOutput.trim().length > 0) {
+      checks.push({ name: "model-inventory", status: "PASS", message: "OpenCode model inventory is accessible" });
+      try {
+        const routingPath = join(autoshipDir, "model-routing.json");
+        await access(routingPath);
+        const routingContent = await readFile(routingPath, "utf8");
+        const routing = JSON.parse(routingContent);
+        const modelIds = modelsOutput.split("\n").map((l) => l.trim()).filter(Boolean);
+        const configuredModels = (routing.models || []).map((m: { id: string }) => m.id);
+        const missingModels = configuredModels.filter((m: string) => !modelIds.some((id: string) => id.includes(m) || m.includes(id)));
+        if (missingModels.length > 0) {
+          checks.push({ name: "model-routing-refs", status: "WARN", message: `Configured models not in current inventory: ${missingModels.join(", ")}` });
+        } else {
+          checks.push({ name: "model-routing-refs", status: "PASS", message: "All configured models are in current inventory" });
+        }
+      } catch {
+        checks.push({ name: "model-routing-refs", status: "WARN", message: "Unable to validate model-routing.json references" });
+      }
+    } else {
+      checks.push({ name: "model-inventory", status: "WARN", message: "OpenCode model inventory is empty" });
+    }
+  } catch {
+    checks.push({ name: "model-inventory", status: "WARN", message: "Unable to access OpenCode model inventory; run /autoship-setup" });
+  }
+
+  try {
+    await execAsync("gh auth status");
+    checks.push({ name: "gh-auth", status: "PASS", message: "GitHub CLI is authenticated" });
+    try {
+      const statusOutput = await execAsync("gh auth status");
+      const hasRepoScope = statusOutput.includes("repo") || statusOutput.includes("Full");
+      if (hasRepoScope) {
+        checks.push({ name: "gh-repo-perms", status: "PASS", message: "GitHub token has repo scope for issue-to-PR automation" });
+      } else {
+        checks.push({ name: "gh-repo-perms", status: "WARN", message: "GitHub token may lack repo scope; run 'gh auth refresh'" });
+      }
+    } catch {
+      checks.push({ name: "gh-repo-perms", status: "WARN", message: "Unable to verify repo permissions" });
+    }
+  } catch {
+    checks.push({ name: "gh-auth", status: "WARN", message: "GitHub CLI not authenticated; run 'gh auth login' or set GH_TOKEN" });
+    checks.push({ name: "gh-repo-perms", status: "WARN", message: "GitHub auth required for permission check" });
+  }
+
   const passChecks = checks.filter(c => c.status === "PASS");
   const warnChecks = checks.filter(c => c.status === "WARN");
   const failChecks = checks.filter(c => c.status === "FAIL");
