@@ -99,11 +99,11 @@ process_event() {
       ;;
     stuck)
       [[ -n "$issue" ]] || return 1
-      apply_state_once "$issue" set-failed blocked
+      apply_state_once "$issue" set-stuck stuck
       ;;
     verify)
       [[ -n "$issue" ]] || return 1
-      apply_state_once "$issue" set-completed completed
+      apply_state_once "$issue" set-verifying verifying
       ;;
     force_dispatch)
       [[ -n "$issue" ]] || return 1
