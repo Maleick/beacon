@@ -191,7 +191,6 @@ verify_and_create_pr() {
   run_verification "$issue"
   verification_status=$?
   if [[ $verification_status -eq 2 ]]; then
-    apply_state_once "$issue" set-completed completed
     return 0
   fi
   if [[ $verification_status -ne 0 ]]; then
