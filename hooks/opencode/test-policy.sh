@@ -241,6 +241,35 @@ touch -t 202604240000 "$MONITOR_COMPLETE_REPO/.autoship/workspaces/issue-998/sta
 )
 assert_eq "COMPLETE" "$(tr -d '[:space:]' < "$MONITOR_COMPLETE_REPO/.autoship/workspaces/issue-998/status")" "monitor marks dead worker complete when fresh result artifact exists"
 
+QUEUE_REPO="$TMP_DIR/queue-repo"
+mkdir -p "$QUEUE_REPO/.autoship" "$QUEUE_REPO/hooks/opencode" "$QUEUE_REPO/hooks"
+git init -q "$QUEUE_REPO"
+cp "$SCRIPT_DIR/process-event-queue.sh" "$QUEUE_REPO/hooks/opencode/process-event-queue.sh"
+cp "$SCRIPT_DIR/../update-state.sh" "$QUEUE_REPO/hooks/update-state.sh"
+chmod +x "$QUEUE_REPO/hooks/opencode/process-event-queue.sh" "$QUEUE_REPO/hooks/update-state.sh"
+cat > "$QUEUE_REPO/.autoship/state.json" <<'JSON'
+{"repo":"owner/repo","issues":{"issue-991":{"state":"running"},"issue-992":{"state":"running"}},"stats":{}}
+JSON
+printf '{"sessions":[]}' > "$QUEUE_REPO/.autoship/token-ledger.json"
+cat > "$QUEUE_REPO/.autoship/event-queue.json" <<'JSON'
+[
+  {"type":"blocked","issue":"issue-991","priority":2,"data":{"status":"BLOCKED"},"queued_at":"2026-04-24T00:00:00Z"},
+  {"type":"blocked","issue":"issue-991","priority":2,"data":{"status":"BLOCKED"},"queued_at":"2026-04-24T00:00:01Z"},
+  {"type":"verify","issue":"issue-992","priority":2,"data":{"status":"COMPLETE"},"queued_at":"2026-04-24T00:00:02Z"},
+  {"type":"verify","issue":"issue-992","priority":2,"data":{"status":"COMPLETE"},"queued_at":"2026-04-24T00:00:03Z"}
+]
+JSON
+(
+  cd "$QUEUE_REPO"
+  bash hooks/opencode/process-event-queue.sh >/dev/null
+)
+assert_eq "blocked" "$(jq -r '.issues["issue-991"].state' "$QUEUE_REPO/.autoship/state.json")" "event processor applies blocked event"
+assert_eq "completed" "$(jq -r '.issues["issue-992"].state' "$QUEUE_REPO/.autoship/state.json")" "event processor applies verify event"
+assert_eq "1" "$(jq -r '.stats.blocked' "$QUEUE_REPO/.autoship/state.json")" "duplicate blocked events do not double-update stats"
+assert_eq "1" "$(jq -r '.stats.session_completed' "$QUEUE_REPO/.autoship/state.json")" "duplicate verify events do not double-update completion stats"
+assert_eq "0" "$(jq 'length' "$QUEUE_REPO/.autoship/event-queue.json")" "event processor drains processed duplicate events"
+assert_eq "2" "$(jq 'length' "$QUEUE_REPO/.autoship/processed-events.json")" "event processor records only unique semantic events"
+
 grep -F 'AUTOSHIP_VERSION="1.5.0-opencode"' "$SCRIPT_DIR/init.sh" >/dev/null 2>&1 && fail "init must not hardcode stale 1.5.0-opencode version"
 
 INIT_REPO="$TMP_DIR/init-repo"
