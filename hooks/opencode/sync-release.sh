@@ -20,6 +20,18 @@ REPO_REF="Maleick/AutoShip"
 
 mkdir -p "$PLUGIN_DIR" "$AUTOSHIP_HOME"
 
+if [[ "$(cd "$REPO_ROOT" && pwd -P)" == "$(cd "$AUTOSHIP_HOME" && pwd -P)" ]]; then
+  if [[ -f "$AUTOSHIP_HOME/plugins/autoship.ts" ]]; then
+    cp -f "$AUTOSHIP_HOME/plugins/autoship.ts" "$PLUGIN_DEST"
+  fi
+  if [[ -f "$AUTOSHIP_HOME/VERSION" ]]; then
+    tr -d '[:space:]' < "$AUTOSHIP_HOME/VERSION" > "$VERSION_FILE"
+  else
+    printf '%s\n' "installed" > "$VERSION_FILE"
+  fi
+  exit 0
+fi
+
 copy_assets() {
   local src="$1"
   rm -f "$PLUGIN_DEST"

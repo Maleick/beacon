@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.0.6
+
+- Fix installed `init.sh` so running from `~/.config/opencode/.autoship` no longer deletes installed hooks, commands, skills, or plugins.
+- Add smoke coverage for initializing a project through the installed OpenCode asset copy.
+
 ## v2.0.5
 
 - Add `opencode-autoship --version` and `opencode-autoship -v` for global CLI version checks.

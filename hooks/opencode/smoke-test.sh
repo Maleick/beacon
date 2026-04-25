@@ -63,6 +63,18 @@ fi
 
 bash "$REPO_ROOT/hooks/opencode/init.sh" >/dev/null
 
+INSTALLED_PROJECT="$PACKAGE_FIXTURE_DIR/installed-project"
+mkdir -p "$INSTALLED_PROJECT"
+git init -q "$INSTALLED_PROJECT"
+(
+  cd "$INSTALLED_PROJECT"
+  OPENCODE_CONFIG_DIR="$CONFIG_HOME/opencode" bash "$AUTOSHIP_INSTALL_DIR/hooks/opencode/init.sh" >/dev/null
+)
+[[ -d "$AUTOSHIP_INSTALL_DIR/hooks" ]]
+[[ -d "$AUTOSHIP_INSTALL_DIR/commands" ]]
+[[ -d "$AUTOSHIP_INSTALL_DIR/skills" ]]
+[[ -f "$AUTOSHIP_INSTALL_DIR/plugins/autoship.ts" ]]
+
 [[ -f "$STATE_FILE" ]]
 [[ "$(cat "$HOOKS_FILE")" == "$REPO_ROOT/hooks" ]]
 jq -e '.config.maxConcurrentAgents == 15' "$STATE_FILE" >/dev/null
