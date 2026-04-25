@@ -47,18 +47,19 @@ AutoShip is the OpenCode plugin for solo maintainers who want their GitHub issue
 
 ## Installation
 
-Install AutoShip into your OpenCode config from any GitHub-backed project. The default path uses `bunx`, so there is no long-lived global CLI to update:
-
-```bash
-bunx opencode-autoship install
-```
-
-If you prefer a global CLI, install it once and run the same commands directly:
+Install the CLI globally if you want AutoShip available long-term on your PATH:
 
 ```bash
 npm install -g opencode-autoship
 opencode-autoship install
 opencode-autoship doctor
+```
+
+For a one-time install without keeping a global CLI, use `bunx` instead:
+
+```bash
+bunx opencode-autoship install
+bunx opencode-autoship doctor
 ```
 
 Then start the setup wizard inside OpenCode:
@@ -70,13 +71,17 @@ Then start the setup wizard inside OpenCode:
 ## Quick Start
 
 ```bash
-# 1. Install AutoShip for OpenCode
-bunx opencode-autoship install
+# 1. Install the CLI globally
+npm install -g opencode-autoship
 
-# 2. Navigate to your project
+# 2. Install AutoShip for OpenCode
+opencode-autoship install
+opencode-autoship doctor
+
+# 3. Navigate to your project
 cd ~/Projects/my-project
 
-# 3. Start AutoShip in OpenCode
+# 4. Start AutoShip in OpenCode
 /autoship
 ```
 
@@ -161,13 +166,13 @@ Package publish steps are documented in [`docs/RELEASE.md`](docs/RELEASE.md).
 Run diagnostics first:
 
 ```bash
-bunx opencode-autoship doctor
+opencode-autoship doctor
 ```
 
 If checks fail, reinstall the package assets and rerun setup:
 
 ```bash
-bunx opencode-autoship install
+opencode-autoship install
 ```
 
 ```text

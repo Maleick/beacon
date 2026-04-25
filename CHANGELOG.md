@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.0.3
+
+- Make global npm install the primary long-term install path across README, Pages, and wiki docs.
+- Document `bunx` as the one-time/no-global install path.
+- Remove stale Pages safety-policy copy from the model routing table.
+
 ## v2.0.2
 
 - Remove content-based unsafe issue blockers from planning, dispatch, classification, and self-improvement issue filing.

@@ -7,7 +7,7 @@ Use this checklist from a clean checkout on the release branch. Commands are wri
 Set the release version once. `VERSION` includes the `v` prefix; `PACKAGE_VERSION` is plain semver for `package.json` and npm.
 
 ```bash
-export VERSION=v1.6.3
+export VERSION=v2.0.3
 export PACKAGE_VERSION=${VERSION#v}
 ```
 
@@ -98,13 +98,17 @@ git tag -a "$VERSION" -m "$VERSION"
 
 ## Publish Package
 
-Publish the package from the same commit used for the tag.
+Publish the npm package from the same commit used for the tag. This is the canonical package for the long-term global install path documented as `npm install -g opencode-autoship`.
 
 ```bash
 npm publish --access public
 ```
 
 If npm publish fails, do not move the tag. Fix the release commit, retag only if the failed tag has not been pushed, and rerun verification.
+
+`bunx opencode-autoship install` is the one-time/no-global path. It resolves the same npm package but does not leave the CLI installed on PATH.
+
+GitHub Packages may be used as a secondary registry for provenance, but public docs should keep npm as the primary install path unless the package is renamed/scoped for GitHub Packages.
 
 ## GitHub Release
 

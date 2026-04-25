@@ -5,12 +5,15 @@ AutoShip has two local configuration locations:
 - OpenCode package assets live under the OpenCode config directory, usually `~/.config/opencode/.autoship/`.
 - Project runtime state lives under the repository's local `.autoship/` directory and should not be committed.
 
-Install or refresh the OpenCode package assets with the package CLI:
+For a long-term install, install the CLI globally and then register AutoShip with OpenCode:
 
 ```bash
-bunx opencode-autoship install
-bunx opencode-autoship doctor
+npm install -g opencode-autoship
+opencode-autoship install
+opencode-autoship doctor
 ```
+
+For a one-time install without keeping the CLI globally, use `bunx opencode-autoship install` instead.
 
 When working from a source checkout, the repo-local installer is also supported and matches the Pages install guide:
 
