@@ -110,22 +110,15 @@ discover_test_command() {
 run_verification() {
   local issue="$1"
   local workspace="$WORKSPACES_DIR/$issue"
-  local result_path="$workspace/AUTOSHIP_RESULT.md"
-  local test_command reviewer_output
+  local test_command
 
   [[ -d "$workspace" ]] || return 2
-  [[ -s "$result_path" ]] || return 1
 
   test_command=$(discover_test_command)
-  reviewer_output=$(mktemp)
-  if bash "$SCRIPT_DIR/reviewer.sh" "$issue" "$workspace" "$result_path" "$test_command" > "$reviewer_output" 2>&1 && grep -F 'VERDICT: PASS' "$reviewer_output" >/dev/null 2>&1; then
-    rm -f "$reviewer_output"
+  if bash "$SCRIPT_DIR/verify-result.sh" "$issue" "$workspace" "$test_command" >/dev/null 2>&1; then
     return 0
   fi
 
-  mkdir -p "$workspace"
-  cp "$reviewer_output" "$workspace/AUTOSHIP_VERIFICATION.log" 2>/dev/null || true
-  rm -f "$reviewer_output"
   return 1
 }
 
