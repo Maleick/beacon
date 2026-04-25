@@ -334,8 +334,9 @@ git -C "$VERIFY_FAIL_REPO" checkout -q -b autoship/issue-184
 printf 'changed\n' > "$VERIFY_FAIL_REPO/feature.txt"
 cp "$SCRIPT_DIR/process-event-queue.sh" "$VERIFY_FAIL_REPO/hooks/opencode/process-event-queue.sh"
 cp "$SCRIPT_DIR/pr-title.sh" "$VERIFY_FAIL_REPO/hooks/opencode/pr-title.sh"
+cp "$SCRIPT_DIR/verify-result.sh" "$VERIFY_FAIL_REPO/hooks/opencode/verify-result.sh"
 cp "$SCRIPT_DIR/../update-state.sh" "$VERIFY_FAIL_REPO/hooks/update-state.sh"
-chmod +x "$VERIFY_FAIL_REPO/hooks/opencode/process-event-queue.sh" "$VERIFY_FAIL_REPO/hooks/opencode/pr-title.sh" "$VERIFY_FAIL_REPO/hooks/update-state.sh"
+chmod +x "$VERIFY_FAIL_REPO/hooks/opencode/process-event-queue.sh" "$VERIFY_FAIL_REPO/hooks/opencode/pr-title.sh" "$VERIFY_FAIL_REPO/hooks/opencode/verify-result.sh" "$VERIFY_FAIL_REPO/hooks/update-state.sh"
 cat > "$VERIFY_FAIL_REPO/hooks/opencode/reviewer.sh" <<'SH'
 #!/usr/bin/env bash
 printf 'VERDICT: FAIL\n'
@@ -391,8 +392,9 @@ git -C "$VERIFY_PASS_REPO" checkout -q -b autoship/issue-184
 printf 'changed\n' > "$VERIFY_PASS_REPO/feature.txt"
 cp "$SCRIPT_DIR/process-event-queue.sh" "$VERIFY_PASS_REPO/hooks/opencode/process-event-queue.sh"
 cp "$SCRIPT_DIR/pr-title.sh" "$VERIFY_PASS_REPO/hooks/opencode/pr-title.sh"
+cp "$SCRIPT_DIR/verify-result.sh" "$VERIFY_PASS_REPO/hooks/opencode/verify-result.sh"
 cp "$SCRIPT_DIR/../update-state.sh" "$VERIFY_PASS_REPO/hooks/update-state.sh"
-chmod +x "$VERIFY_PASS_REPO/hooks/opencode/process-event-queue.sh" "$VERIFY_PASS_REPO/hooks/opencode/pr-title.sh" "$VERIFY_PASS_REPO/hooks/update-state.sh"
+chmod +x "$VERIFY_PASS_REPO/hooks/opencode/process-event-queue.sh" "$VERIFY_PASS_REPO/hooks/opencode/pr-title.sh" "$VERIFY_PASS_REPO/hooks/opencode/verify-result.sh" "$VERIFY_PASS_REPO/hooks/update-state.sh"
 cat > "$VERIFY_PASS_REPO/hooks/opencode/reviewer.sh" <<'SH'
 #!/usr/bin/env bash
 printf 'VERDICT: PASS\n'
@@ -437,6 +439,97 @@ grep -F 'pr create --title feat: Create PR after verified PASS (#184)' "$VERIFY_
 grep -F -- '--body-file .autoship/workspaces/issue-184/AUTOSHIP_PR_BODY.md' "$VERIFY_PASS_REPO/gh-pr.log" >/dev/null || fail "verified PASS creates PR from generated body file"
 grep -F 'Reviewer: PASS' "$VERIFY_PASS_REPO/.autoship/workspaces/issue-184/AUTOSHIP_PR_BODY.md" >/dev/null || fail "generated PR body records reviewer pass"
 assert_eq "completed" "$(jq -r '.issues["issue-184"].state' "$VERIFY_PASS_REPO/.autoship/state.json")" "verified PASS completes issue after PR creation"
+
+VERIFY_HOOK_PASS_REPO="$TMP_DIR/verify-hook-pass-repo"
+mkdir -p "$VERIFY_HOOK_PASS_REPO/.autoship/workspaces/issue-182" "$VERIFY_HOOK_PASS_REPO/hooks/opencode"
+git init -q "$VERIFY_HOOK_PASS_REPO"
+git -C "$VERIFY_HOOK_PASS_REPO" config user.email autoship@example.invalid
+git -C "$VERIFY_HOOK_PASS_REPO" config user.name AutoShip
+printf 'base\n' > "$VERIFY_HOOK_PASS_REPO/README.md"
+git -C "$VERIFY_HOOK_PASS_REPO" add README.md
+git -C "$VERIFY_HOOK_PASS_REPO" commit -q -m initial
+git -C "$VERIFY_HOOK_PASS_REPO" checkout -q -b autoship/issue-182
+printf 'changed\n' > "$VERIFY_HOOK_PASS_REPO/feature.txt"
+git -C "$VERIFY_HOOK_PASS_REPO" add feature.txt
+git -C "$VERIFY_HOOK_PASS_REPO" commit -q -m 'feat: issue 182'
+cp "$SCRIPT_DIR/verify-result.sh" "$VERIFY_HOOK_PASS_REPO/hooks/opencode/verify-result.sh"
+chmod +x "$VERIFY_HOOK_PASS_REPO/hooks/opencode/verify-result.sh"
+cat > "$VERIFY_HOOK_PASS_REPO/hooks/opencode/reviewer.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'VERDICT: PASS\n'
+SH
+chmod +x "$VERIFY_HOOK_PASS_REPO/hooks/opencode/reviewer.sh"
+printf '2026-04-24T00:00:00Z\n' > "$VERIFY_HOOK_PASS_REPO/.autoship/workspaces/issue-182/started_at"
+printf 'Result summary\n' > "$VERIFY_HOOK_PASS_REPO/.autoship/workspaces/issue-182/AUTOSHIP_RESULT.md"
+touch -t 202604240000 "$VERIFY_HOOK_PASS_REPO/.autoship/workspaces/issue-182/started_at"
+touch -t 202604240001 "$VERIFY_HOOK_PASS_REPO/.autoship/workspaces/issue-182/AUTOSHIP_RESULT.md"
+(
+  cd "$VERIFY_HOOK_PASS_REPO"
+  bash hooks/opencode/verify-result.sh issue-182 "$VERIFY_HOOK_PASS_REPO/.autoship/workspaces/issue-182" true >/tmp/autoship-verify-pass.out
+)
+grep -F 'PASS' /tmp/autoship-verify-pass.out >/dev/null || fail "deterministic verification hook emits PASS"
+
+VERIFY_HOOK_FAIL_REPO="$TMP_DIR/verify-hook-fail-repo"
+mkdir -p "$VERIFY_HOOK_FAIL_REPO/.autoship/workspaces/issue-182" "$VERIFY_HOOK_FAIL_REPO/hooks/opencode"
+git init -q "$VERIFY_HOOK_FAIL_REPO"
+git -C "$VERIFY_HOOK_FAIL_REPO" config user.email autoship@example.invalid
+git -C "$VERIFY_HOOK_FAIL_REPO" config user.name AutoShip
+printf 'base\n' > "$VERIFY_HOOK_FAIL_REPO/README.md"
+git -C "$VERIFY_HOOK_FAIL_REPO" add README.md
+git -C "$VERIFY_HOOK_FAIL_REPO" commit -q -m initial
+git -C "$VERIFY_HOOK_FAIL_REPO" checkout -q -b autoship/issue-182
+printf 'changed\n' > "$VERIFY_HOOK_FAIL_REPO/feature.txt"
+git -C "$VERIFY_HOOK_FAIL_REPO" add feature.txt
+git -C "$VERIFY_HOOK_FAIL_REPO" commit -q -m 'feat: issue 182'
+cp "$SCRIPT_DIR/verify-result.sh" "$VERIFY_HOOK_FAIL_REPO/hooks/opencode/verify-result.sh"
+chmod +x "$VERIFY_HOOK_FAIL_REPO/hooks/opencode/verify-result.sh"
+cat > "$VERIFY_HOOK_FAIL_REPO/hooks/opencode/reviewer.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'VERDICT: PASS\n'
+SH
+chmod +x "$VERIFY_HOOK_FAIL_REPO/hooks/opencode/reviewer.sh"
+printf '2026-04-24T00:00:00Z\n' > "$VERIFY_HOOK_FAIL_REPO/.autoship/workspaces/issue-182/started_at"
+printf 'stale result\n' > "$VERIFY_HOOK_FAIL_REPO/.autoship/workspaces/issue-182/AUTOSHIP_RESULT.md"
+touch -t 202604240001 "$VERIFY_HOOK_FAIL_REPO/.autoship/workspaces/issue-182/started_at"
+touch -t 202604240000 "$VERIFY_HOOK_FAIL_REPO/.autoship/workspaces/issue-182/AUTOSHIP_RESULT.md"
+if (
+  cd "$VERIFY_HOOK_FAIL_REPO"
+  bash hooks/opencode/verify-result.sh issue-182 "$VERIFY_HOOK_FAIL_REPO/.autoship/workspaces/issue-182" true >/tmp/autoship-verify-fail.out 2>&1
+); then
+  fail "deterministic verification hook fails stale results"
+fi
+grep -F 'FAIL' /tmp/autoship-verify-fail.out >/dev/null || fail "deterministic verification hook emits FAIL"
+
+VERIFY_HOOK_TEST_FAIL_REPO="$TMP_DIR/verify-hook-test-fail-repo"
+mkdir -p "$VERIFY_HOOK_TEST_FAIL_REPO/.autoship/workspaces/issue-182" "$VERIFY_HOOK_TEST_FAIL_REPO/hooks/opencode"
+git init -q "$VERIFY_HOOK_TEST_FAIL_REPO"
+git -C "$VERIFY_HOOK_TEST_FAIL_REPO" config user.email autoship@example.invalid
+git -C "$VERIFY_HOOK_TEST_FAIL_REPO" config user.name AutoShip
+printf 'base\n' > "$VERIFY_HOOK_TEST_FAIL_REPO/README.md"
+git -C "$VERIFY_HOOK_TEST_FAIL_REPO" add README.md
+git -C "$VERIFY_HOOK_TEST_FAIL_REPO" commit -q -m initial
+git -C "$VERIFY_HOOK_TEST_FAIL_REPO" checkout -q -b autoship/issue-182
+printf 'changed\n' > "$VERIFY_HOOK_TEST_FAIL_REPO/feature.txt"
+git -C "$VERIFY_HOOK_TEST_FAIL_REPO" add feature.txt
+git -C "$VERIFY_HOOK_TEST_FAIL_REPO" commit -q -m 'feat: issue 182'
+cp "$SCRIPT_DIR/verify-result.sh" "$VERIFY_HOOK_TEST_FAIL_REPO/hooks/opencode/verify-result.sh"
+chmod +x "$VERIFY_HOOK_TEST_FAIL_REPO/hooks/opencode/verify-result.sh"
+cat > "$VERIFY_HOOK_TEST_FAIL_REPO/hooks/opencode/reviewer.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'VERDICT: PASS\n'
+SH
+chmod +x "$VERIFY_HOOK_TEST_FAIL_REPO/hooks/opencode/reviewer.sh"
+printf '2026-04-24T00:00:00Z\n' > "$VERIFY_HOOK_TEST_FAIL_REPO/.autoship/workspaces/issue-182/started_at"
+printf 'Result summary\n' > "$VERIFY_HOOK_TEST_FAIL_REPO/.autoship/workspaces/issue-182/AUTOSHIP_RESULT.md"
+touch -t 202604240000 "$VERIFY_HOOK_TEST_FAIL_REPO/.autoship/workspaces/issue-182/started_at"
+touch -t 202604240001 "$VERIFY_HOOK_TEST_FAIL_REPO/.autoship/workspaces/issue-182/AUTOSHIP_RESULT.md"
+if (
+  cd "$VERIFY_HOOK_TEST_FAIL_REPO"
+  bash hooks/opencode/verify-result.sh issue-182 "$VERIFY_HOOK_TEST_FAIL_REPO/.autoship/workspaces/issue-182" false >/tmp/autoship-verify-test-fail.out 2>&1
+); then
+  fail "deterministic verification hook fails failing test command"
+fi
+grep -F 'test command failed' "$VERIFY_HOOK_TEST_FAIL_REPO/.autoship/workspaces/issue-182/AUTOSHIP_VERIFICATION.log" >/dev/null || fail "deterministic verification hook records failing test command"
 
 grep -F 'AUTOSHIP_VERSION="1.5.0-opencode"' "$SCRIPT_DIR/init.sh" >/dev/null 2>&1 && fail "init must not hardcode stale 1.5.0-opencode version"
 
