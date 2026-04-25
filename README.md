@@ -121,6 +121,10 @@ bash -n hooks/opencode/*.sh hooks/*.sh
 bash hooks/opencode/smoke-test.sh
 ```
 
+## Release
+
+Package publish steps are documented in [`docs/RELEASE.md`](docs/RELEASE.md).
+
 ## Runtime Artifacts
 
 `.autoship/` contains local runtime state and workspaces. Do not commit it.
