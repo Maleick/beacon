@@ -44,6 +44,16 @@ function isAllowed(filePath) {
 }
 
 const violations = [];
+const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
+
+if (packageJson.bin?.["opencode-autoship"] !== "dist/cli.js") {
+  violations.push("package.json bin.opencode-autoship must be dist/cli.js for npm global installs");
+}
+
+if (packageJson.repository?.url !== "git+https://github.com/Maleick/AutoShip.git") {
+  violations.push("package.json repository.url must use the npm-normalized git+https URL");
+}
+
 for (const file of files) {
   const filePath = normalizePath(String(file.path || ""));
   if (!filePath) {

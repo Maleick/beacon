@@ -1,12 +1,12 @@
 {
   "name": "opencode-autoship",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "description": "Turn backlog into reviewed PRs with an OpenCode issue-to-PR orchestration plugin.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "opencode-autoship": "./dist/cli.js"
+    "opencode-autoship": "dist/cli.js"
   },
   "exports": {
     ".": {
@@ -40,7 +40,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/Maleick/AutoShip.git"
+    "url": "git+https://github.com/Maleick/AutoShip.git"
   },
   "homepage": "https://autoship.teamoperator.red",
   "bugs": {

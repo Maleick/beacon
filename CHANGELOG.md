@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.0.4
+
+- Normalize npm package metadata so the global `opencode-autoship` binary is preserved during publish.
+
 ## v2.0.3
 
 - Make global npm install the primary long-term install path across README, Pages, and wiki docs.
