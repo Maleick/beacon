@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.0.0
+
+- Package AutoShip as `opencode-autoship` with package-style install and doctor flows.
+- Add first-run setup, free-model-first routing, frontier lead roles, specialized role assets, and package diagnostics.
+- Add deterministic verification, reviewer verdict parsing, PR creation, event queue processing, retry/escalation state, and E2E dry-run coverage.
+- Add structured failure artifacts, self-improvement reports, safe issue filing, stale worker detection, paid-model fallback, and hardened cleanup.
+- Refresh README, GitHub Pages, wiki, command aliases, package publish checklist, version alignment checks, and npm pack verification.
+
 ## v1.6.2
 
 - Fix OpenCode worker launches by clearing inherited parent OpenCode session environment variables.
