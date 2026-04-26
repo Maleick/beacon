@@ -171,16 +171,14 @@ async function doctor() {
     await access(join(projectAutoshipDir, "config.json"));
     checks.push({ name: "config", status: "PASS", message: "Config file exists" });
   } catch {
-    checks.push({ name: "config", status: "FAIL", message: "Project .autoship/config.json not found; run /autoship-setup" });
-    hasFailure = true;
+    checks.push({ name: "config", status: "WARN", message: "Project .autoship/config.json not found; run /autoship-setup before dispatch" });
   }
 
   try {
     await access(join(projectAutoshipDir, "model-routing.json"));
     checks.push({ name: "model-routing", status: "PASS", message: "Model routing file exists" });
   } catch {
-    checks.push({ name: "model-routing", status: "FAIL", message: "Project .autoship/model-routing.json not found; run /autoship-setup" });
-    hasFailure = true;
+    checks.push({ name: "model-routing", status: "WARN", message: "Project .autoship/model-routing.json not found; run /autoship-setup before dispatch" });
   }
 
   for (const tool of ["gh", "git", "jq", "opencode"]) {

@@ -32,7 +32,9 @@ emit_event() {
     touch "$marker" 2>/dev/null || true
   }
 
-  if command -v flock >/dev/null 2>&1; then
+  if [[ "$(uname -s 2>/dev/null || true)" == "Darwin" ]] && command -v lockf >/dev/null 2>&1; then
+    lockf -k "$LOCK_FILE" bash -c 'jq --argjson evt "$1" '\'' . + [$evt] '\'' "$2" > "$2.tmp" && mv "$2.tmp" "$2" && touch "$3"' _ "$event" "$EVENT_QUEUE" "$marker" 2>/dev/null || write_event
+  elif command -v flock >/dev/null 2>&1; then
     (
       flock -x 200 || exit 1
       write_event

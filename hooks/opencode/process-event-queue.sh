@@ -23,7 +23,9 @@ if [[ -z "${AUTOSHIP_QUEUE_LOCKED:-}" ]]; then
   export AUTOSHIP_QUEUE_LOCKED=1
   mkdir -p "$AUTOSHIP_DIR"
   touch "$LOCK_FILE"
-  if command -v flock >/dev/null 2>&1; then
+  if [[ "$(uname -s 2>/dev/null || true)" == "Darwin" ]] && command -v lockf >/dev/null 2>&1; then
+    exec lockf -k "$LOCK_FILE" "$0" "$@"
+  elif command -v flock >/dev/null 2>&1; then
     exec 9>"$LOCK_FILE"
     flock -x 9
   elif command -v lockf >/dev/null 2>&1; then
