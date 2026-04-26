@@ -181,6 +181,7 @@ RUNNER_REPO="$TMP_DIR/runner-repo"
 mkdir -p "$RUNNER_REPO/.autoship/workspaces/issue-996" "$RUNNER_REPO/hooks/opencode" "$RUNNER_REPO/hooks" "$RUNNER_REPO/bin"
 git init -q "$RUNNER_REPO"
 cp "$SCRIPT_DIR/runner.sh" "$RUNNER_REPO/hooks/opencode/runner.sh"
+cp "$SCRIPT_DIR/runtime-config.sh" "$RUNNER_REPO/hooks/opencode/runtime-config.sh"
 cp "$SCRIPT_DIR/../update-state.sh" "$RUNNER_REPO/hooks/update-state.sh"
 cp "$SCRIPT_DIR/../capture-failure.sh" "$RUNNER_REPO/hooks/capture-failure.sh"
 chmod +x "$RUNNER_REPO/hooks/opencode/runner.sh" "$RUNNER_REPO/hooks/update-state.sh" "$RUNNER_REPO/hooks/capture-failure.sh"
@@ -233,6 +234,7 @@ mkdir -p "$RETRY_REPO/.autoship/workspaces/issue-181" "$RETRY_REPO/.autoship/fai
 git init -q "$RETRY_REPO"
 cp "$SCRIPT_DIR/../update-state.sh" "$RETRY_REPO/hooks/update-state.sh"
 cp "$SCRIPT_DIR/dispatch.sh" "$RETRY_REPO/hooks/opencode/dispatch.sh"
+cp "$SCRIPT_DIR/runtime-config.sh" "$RETRY_REPO/hooks/opencode/runtime-config.sh"
 chmod +x "$RETRY_REPO/hooks/update-state.sh" "$RETRY_REPO/hooks/opencode/dispatch.sh"
 cat > "$RETRY_REPO/.autoship/state.json" <<'JSON'
 {"repo":"owner/repo","issues":{"issue-181":{"state":"running","attempt":3,"model":"opencode/test","role":"implementer"}},"stats":{},"config":{"maxConcurrentAgents":15,"maxRetries":3}}
@@ -273,6 +275,7 @@ FALLBACK_REPO="$TMP_DIR/fallback-runner-repo"
 mkdir -p "$FALLBACK_REPO/.autoship/workspaces/issue-208" "$FALLBACK_REPO/hooks/opencode" "$FALLBACK_REPO/hooks" "$FALLBACK_REPO/bin"
 git init -q "$FALLBACK_REPO"
 cp "$SCRIPT_DIR/runner.sh" "$FALLBACK_REPO/hooks/opencode/runner.sh"
+cp "$SCRIPT_DIR/runtime-config.sh" "$FALLBACK_REPO/hooks/opencode/runtime-config.sh"
 cp "$SCRIPT_DIR/../update-state.sh" "$FALLBACK_REPO/hooks/update-state.sh"
 cp "$SCRIPT_DIR/../capture-failure.sh" "$FALLBACK_REPO/hooks/capture-failure.sh"
 chmod +x "$FALLBACK_REPO/hooks/opencode/runner.sh" "$FALLBACK_REPO/hooks/update-state.sh" "$FALLBACK_REPO/hooks/capture-failure.sh"
@@ -319,6 +322,7 @@ AUTOCOMMIT_REPO="$TMP_DIR/autocommit-runner-repo"
 mkdir -p "$AUTOCOMMIT_REPO/.autoship/workspaces/issue-253" "$AUTOCOMMIT_REPO/hooks/opencode" "$AUTOCOMMIT_REPO/hooks" "$AUTOCOMMIT_REPO/bin"
 git init -q "$AUTOCOMMIT_REPO"
 cp "$SCRIPT_DIR/runner.sh" "$AUTOCOMMIT_REPO/hooks/opencode/runner.sh"
+cp "$SCRIPT_DIR/runtime-config.sh" "$AUTOCOMMIT_REPO/hooks/opencode/runtime-config.sh"
 cp "$SCRIPT_DIR/../update-state.sh" "$AUTOCOMMIT_REPO/hooks/update-state.sh"
 cp "$SCRIPT_DIR/../capture-failure.sh" "$AUTOCOMMIT_REPO/hooks/capture-failure.sh"
 chmod +x "$AUTOCOMMIT_REPO/hooks/opencode/runner.sh" "$AUTOCOMMIT_REPO/hooks/update-state.sh" "$AUTOCOMMIT_REPO/hooks/capture-failure.sh"
@@ -359,6 +363,7 @@ TESTS_ONLY_REPO="$TMP_DIR/tests-only-runner-repo"
 mkdir -p "$TESTS_ONLY_REPO/.autoship/workspaces/issue-254" "$TESTS_ONLY_REPO/hooks/opencode" "$TESTS_ONLY_REPO/hooks" "$TESTS_ONLY_REPO/bin"
 git init -q "$TESTS_ONLY_REPO"
 cp "$SCRIPT_DIR/runner.sh" "$TESTS_ONLY_REPO/hooks/opencode/runner.sh"
+cp "$SCRIPT_DIR/runtime-config.sh" "$TESTS_ONLY_REPO/hooks/opencode/runtime-config.sh"
 cp "$SCRIPT_DIR/../update-state.sh" "$TESTS_ONLY_REPO/hooks/update-state.sh"
 cp "$SCRIPT_DIR/../capture-failure.sh" "$TESTS_ONLY_REPO/hooks/capture-failure.sh"
 chmod +x "$TESTS_ONLY_REPO/hooks/opencode/runner.sh" "$TESTS_ONLY_REPO/hooks/update-state.sh" "$TESTS_ONLY_REPO/hooks/capture-failure.sh"
@@ -399,6 +404,7 @@ SESSION_REPO="$TMP_DIR/session-runner-repo"
 mkdir -p "$SESSION_REPO/.autoship/workspaces/issue-997" "$SESSION_REPO/hooks/opencode" "$SESSION_REPO/hooks" "$SESSION_REPO/bin"
 git init -q "$SESSION_REPO"
 cp "$SCRIPT_DIR/runner.sh" "$SESSION_REPO/hooks/opencode/runner.sh"
+cp "$SCRIPT_DIR/runtime-config.sh" "$SESSION_REPO/hooks/opencode/runtime-config.sh"
 cp "$SCRIPT_DIR/../update-state.sh" "$SESSION_REPO/hooks/update-state.sh"
 cp "$SCRIPT_DIR/../capture-failure.sh" "$SESSION_REPO/hooks/capture-failure.sh"
 chmod +x "$SESSION_REPO/hooks/opencode/runner.sh" "$SESSION_REPO/hooks/update-state.sh" "$SESSION_REPO/hooks/capture-failure.sh"
@@ -1108,7 +1114,7 @@ git -C "$DISPATCH_REPO" remote add origin git@github.com:owner/repo.git
 printf 'base\n' > "$DISPATCH_REPO/README.md"
 git -C "$DISPATCH_REPO" add README.md
 git -C "$DISPATCH_REPO" commit -q -m initial
-cp "$SCRIPT_DIR/dispatch.sh" "$SCRIPT_DIR/create-worktree.sh" "$SCRIPT_DIR/select-model.sh" "$SCRIPT_DIR/pr-title.sh" "$DISPATCH_REPO/hooks/opencode/"
+cp "$SCRIPT_DIR/dispatch.sh" "$SCRIPT_DIR/create-worktree.sh" "$SCRIPT_DIR/select-model.sh" "$SCRIPT_DIR/pr-title.sh" "$SCRIPT_DIR/runtime-config.sh" "$DISPATCH_REPO/hooks/opencode/"
 cp "$SCRIPT_DIR/../update-state.sh" "$DISPATCH_REPO/hooks/update-state.sh"
 cat > "$DISPATCH_REPO/.autoship/state.json" <<'JSON'
 {"repo":"owner/repo","issues":{},"stats":{},"config":{"maxConcurrentAgents":15}}
@@ -1155,7 +1161,7 @@ git -C "$FIXTURE_REPO" remote add origin git@github.com:owner/repo.git
 printf 'base\n' > "$FIXTURE_REPO/README.md"
 git -C "$FIXTURE_REPO" add README.md
 git -C "$FIXTURE_REPO" commit -q -m initial
-cp "$SCRIPT_DIR/plan-issues.sh" "$SCRIPT_DIR/dispatch.sh" "$SCRIPT_DIR/create-worktree.sh" "$SCRIPT_DIR/select-model.sh" "$SCRIPT_DIR/pr-title.sh" "$SCRIPT_DIR/runner.sh" "$SCRIPT_DIR/reviewer.sh" "$SCRIPT_DIR/create-pr.sh" "$FIXTURE_REPO/hooks/opencode/"
+cp "$SCRIPT_DIR/plan-issues.sh" "$SCRIPT_DIR/dispatch.sh" "$SCRIPT_DIR/create-worktree.sh" "$SCRIPT_DIR/select-model.sh" "$SCRIPT_DIR/pr-title.sh" "$SCRIPT_DIR/runner.sh" "$SCRIPT_DIR/reviewer.sh" "$SCRIPT_DIR/create-pr.sh" "$SCRIPT_DIR/runtime-config.sh" "$FIXTURE_REPO/hooks/opencode/"
 cp "$SCRIPT_DIR/../update-state.sh" "$SCRIPT_DIR/../capture-failure.sh" "$FIXTURE_REPO/hooks/"
 chmod +x "$FIXTURE_REPO"/hooks/opencode/*.sh "$FIXTURE_REPO"/hooks/*.sh
 cat > "$FIXTURE_REPO/.autoship/state.json" <<'JSON'
@@ -1272,6 +1278,20 @@ cp -R "$SCRIPT_DIR/../.." "$PACKAGE_REPO"
   if jq -e '.plugin[] | select(type == "string" and contains("autoship.ts"))' "$CONFIG_DIR/opencode.json" >/dev/null; then
     fail "package installer removes legacy autoship.ts plugin entries"
   fi
+  printf '%s\n' '{invalid-json' > "$CONFIG_DIR/opencode.json"
+  if OPENCODE_CONFIG_DIR="$CONFIG_DIR" node dist/cli.js install >/"$TMP_DIR/package-invalid-config.txt" 2>&1; then
+    fail "package installer fails instead of replacing invalid opencode.json"
+  fi
+  grep -F 'Error:' "$TMP_DIR/package-invalid-config.txt" >/dev/null || fail "package installer reports invalid opencode.json errors"
+  printf '%s\n' '{"plugin":["file:///tmp/legacy/autoship.ts","other-plugin"],"customSetting":true}' > "$CONFIG_DIR/opencode.json"
+  mv AGENTS.md AGENTS.md.real
+  ln -s AGENTS.md.real AGENTS.md
+  if OPENCODE_CONFIG_DIR="$CONFIG_DIR" node dist/cli.js install >/"$TMP_DIR/package-symlink-asset.txt" 2>&1; then
+    fail "package installer fails instead of skipping symlinked package assets"
+  fi
+  grep -F 'Refusing to install symlinked package asset' "$TMP_DIR/package-symlink-asset.txt" >/dev/null || fail "package installer reports symlinked package assets"
+  rm AGENTS.md
+  mv AGENTS.md.real AGENTS.md
   test -d "$CONFIG_DIR/.autoship/hooks" || fail "package installer copies hooks"
   test -d "$CONFIG_DIR/.autoship/commands" || fail "package installer copies commands"
   test -d "$CONFIG_DIR/.autoship/skills" || fail "package installer copies skills"

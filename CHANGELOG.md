@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.0.11
+
+- Consolidate shared runtime configuration lookup for worker concurrency across dispatch, runner, and status scripts.
+- Add shared TypeScript config and routing types, tightening CLI handling of malformed config and unsafe package asset errors.
+- Remove stale legacy hook, placeholder release note page, and completed in-progress planning documents.
+- Refresh OpenCode install docs around npm-first installation and trim stale comments from shell hooks.
+
 ## v2.0.10
 
 - Rotate compatible free worker models deterministically by issue number so parallel dispatches do not overload one free provider.

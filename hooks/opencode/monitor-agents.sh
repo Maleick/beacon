@@ -1,5 +1,4 @@
-# monitor-agents-opencode.sh — Poll status files for OpenCode agents
-# Adapted from monitor-agents.sh for OpenCode's file-based status
+# Poll status files for OpenCode agents.
 
 set -eo pipefail
 

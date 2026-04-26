@@ -1,6 +1,6 @@
 # AutoShip OpenCode Installation Guide
 
-AutoShip v1.5.0+ uses OpenCode as the only supported runtime. The installer checks GitHub releases and refreshes the local plugin copy when a newer release is available.
+AutoShip uses OpenCode as the only supported runtime. The package installer registers AutoShip with OpenCode and installs the bundled hooks, commands, and skills under the OpenCode config directory.
 
 ## Requirements
 
@@ -15,13 +15,21 @@ AutoShip v1.5.0+ uses OpenCode as the only supported runtime. The installer chec
 ### Option 1: Global Installation (Recommended)
 
 ```bash
-bash hooks/opencode/install.sh
+npm install -g opencode-autoship
+opencode-autoship install
+opencode-autoship doctor
 ```
 
-### Option 2: Project-Local Installation
+### Option 2: One-Time Package Installation
 
 ```bash
-# Use the repo-local installer from inside the checkout
+bunx opencode-autoship install
+bunx opencode-autoship doctor
+```
+
+### Option 3: Source Checkout Installation
+
+```bash
 bash hooks/opencode/install.sh
 ```
 
@@ -51,8 +59,10 @@ bash hooks/opencode/install.sh
 ## Quick Start
 
 ```bash
-# 1. Install AutoShip skills
-bash hooks/opencode/install.sh
+# 1. Install AutoShip for OpenCode
+npm install -g opencode-autoship
+opencode-autoship install
+opencode-autoship doctor
 
 # 2. Navigate to your project
 cd ~/Projects/my-project
@@ -125,11 +135,11 @@ By default, setup chooses the best available role model from `opencode models`, 
 ### Skills not loading
 
 ```bash
-# Check OpenCode plugin directory
-ls ~/.config/opencode/plugins/
+# Check installed AutoShip package assets
+ls ~/.config/opencode/.autoship/
 
-# Verify plugin file exists
-ls ~/.config/opencode/plugins/autoship.ts
+# Verify OpenCode registers the package plugin
+jq '.plugin' ~/.config/opencode/opencode.json
 ```
 
 ### State file issues
@@ -153,8 +163,8 @@ bash hooks/quota-update.sh reset
 ## Uninstall
 
 ```bash
-# Remove plugin files
-rm -rf ~/.config/opencode/plugins/autoship.ts
+# Remove installed package assets
+rm -rf ~/.config/opencode/.autoship
 
 # Remove state (optional)
 rm -rf .autoship/

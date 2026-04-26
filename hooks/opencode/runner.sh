@@ -6,15 +6,13 @@ REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
   exit 1
 }
 cd "$REPO_ROOT"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/runtime-config.sh"
 
 AUTOSHIP_DIR=".autoship"
 STATE_FILE="$AUTOSHIP_DIR/state.json"
 WORKSPACES_DIR="$AUTOSHIP_DIR/workspaces"
-MAX=$(jq -r '.config.maxConcurrentAgents // .max_concurrent_agents // empty' "$STATE_FILE" 2>/dev/null || true)
-if [[ -z "$MAX" && -f "$AUTOSHIP_DIR/config.json" ]]; then
-  MAX=$(jq -r '.maxConcurrentAgents // .max_agents // empty' "$AUTOSHIP_DIR/config.json" 2>/dev/null || true)
-fi
-MAX="${MAX:-15}"
+MAX=$(autoship_max_agents "$STATE_FILE" "$AUTOSHIP_DIR")
 DRY_RUN="${AUTOSHIP_RUNNER_DRY_RUN:-false}"
 CHECKPOINT_EVERY="${AUTOSHIP_CHECKPOINT_EVERY:-0}"
 

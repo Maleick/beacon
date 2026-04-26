@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/runtime-config.sh"
 DRY_RUN=false
 POSITIONAL=()
 
@@ -39,11 +40,7 @@ if [[ -f "$STATE_FILE" ]] && jq -e --arg key "$ISSUE_KEY" '(.issues[$key].termin
   exit 0
 fi
 
-max_agents=$(jq -r '.config.maxConcurrentAgents // .max_concurrent_agents // empty' "$STATE_FILE" 2>/dev/null || true)
-if [[ -z "$max_agents" && -f "$AUTOSHIP_DIR/config.json" ]]; then
-  max_agents=$(jq -r '.maxConcurrentAgents // .max_agents // empty' "$AUTOSHIP_DIR/config.json" 2>/dev/null || true)
-fi
-max_agents="${max_agents:-15}"
+max_agents=$(autoship_max_agents "$STATE_FILE" "$AUTOSHIP_DIR")
 running=$(jq '[.issues | to_entries[] | select((.value.state // .value.status) == "running")] | length' "$STATE_FILE" 2>/dev/null || echo 0)
 cap_note=""
 if (( running >= max_agents )); then

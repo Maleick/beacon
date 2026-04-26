@@ -24,7 +24,6 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
-# Get repo slug from state
 REPO_SLUG=$(jq -r '.repo // empty' "$STATE_FILE" 2>/dev/null) || REPO_SLUG=""
 if [[ -z "$REPO_SLUG" ]]; then
   REPO_SLUG=$(git remote get-url origin 2>/dev/null | sed -E 's#^.+[:/]([^/]+/[^/]+)(\.git)?$#\1#' | sed 's/\.git$//')
