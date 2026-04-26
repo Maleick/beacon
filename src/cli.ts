@@ -171,16 +171,37 @@ async function doctor() {
     await access(join(projectAutoshipDir, "config.json"));
     checks.push({ name: "config", status: "PASS", message: "Config file exists" });
   } catch {
-    checks.push({ name: "config", status: "FAIL", message: "Project .autoship/config.json not found; run /autoship-setup" });
-    hasFailure = true;
+    checks.push({ name: "config", status: "WARN", message: "Project .autoship/config.json not found; run /autoship-setup before dispatch" });
   }
 
   try {
     await access(join(projectAutoshipDir, "model-routing.json"));
     checks.push({ name: "model-routing", status: "PASS", message: "Model routing file exists" });
   } catch {
-    checks.push({ name: "model-routing", status: "FAIL", message: "Project .autoship/model-routing.json not found; run /autoship-setup" });
-    hasFailure = true;
+    checks.push({ name: "model-routing", status: "WARN", message: "Project .autoship/model-routing.json not found; run /autoship-setup before dispatch" });
+  }
+
+  for (const tool of ["gh", "git", "jq", "opencode"]) {
+    try {
+      execSync(`command -v ${tool}`, { stdio: "ignore", shell: "/bin/sh" });
+      checks.push({ name: `tool-${tool}`, status: "PASS", message: `${tool} is available` });
+    } catch {
+      checks.push({ name: `tool-${tool}`, status: "FAIL", message: `${tool} is not available in PATH` });
+      hasFailure = true;
+    }
+  }
+
+  try {
+    const configPath = join(projectAutoshipDir, "config.json");
+    const config = JSON.parse(await readFile(configPath, "utf8"));
+    const maxAgents = Number(config.maxConcurrentAgents ?? config.max_agents ?? 0);
+    if (maxAgents > 0 && maxAgents <= 15) {
+      checks.push({ name: "worker-cap", status: "PASS", message: `Worker cap is ${maxAgents}` });
+    } else {
+      checks.push({ name: "worker-cap", status: "WARN", message: `Worker cap ${maxAgents || "unset"} is outside recommended range 1-15` });
+    }
+  } catch {
+    checks.push({ name: "worker-cap", status: "WARN", message: "Unable to validate worker cap" });
   }
 
   try {
