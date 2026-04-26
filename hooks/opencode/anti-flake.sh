@@ -12,12 +12,21 @@ run_with_anti_flake() {
   local test_cmd="${1:-$FLAME_TEST_COMMAND}"
   local attempt=0
   local last_status=0
+  local -a cmd_parts=()
+
+  # Execute the command directly (no eval) to avoid shell injection when
+  # test_cmd comes from repo-controlled configuration.
+  read -r -a cmd_parts <<< "$test_cmd"
+  if [[ "${#cmd_parts[@]}" -eq 0 ]]; then
+    echo "[anti-flake] FAIL: empty test command" >&2
+    return 1
+  fi
 
   while (( attempt <= FLAME_RETRY_COUNT )); do
     ((attempt++))
 
     set +e
-    eval "$test_cmd" 2>&1
+    "${cmd_parts[@]}" 2>&1
     last_status=$?
     set -e
 

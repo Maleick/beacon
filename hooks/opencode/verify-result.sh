@@ -68,11 +68,13 @@ fi
 [[ "$has_diff" == true ]] || fail "git diff is empty"
 
 if [[ -n "$TEST_COMMAND" && "$TEST_COMMAND" != "none" ]]; then
+  read -r -a test_cmd_parts <<< "$TEST_COMMAND"
+  [[ "${#test_cmd_parts[@]}" -gt 0 ]] || fail "test command is empty"
   if [[ -x "$SCRIPT_DIR/anti-flake.sh" ]]; then
     if ! (cd "$GIT_WORKTREE" && bash "$SCRIPT_DIR/anti-flake.sh" run "$TEST_COMMAND") >> "$LOG_PATH" 2>&1; then
       fail "test command failed"
     fi
-  elif ! (cd "$GIT_WORKTREE" && eval "$TEST_COMMAND") >> "$LOG_PATH" 2>&1; then
+  elif ! (cd "$GIT_WORKTREE" && "${test_cmd_parts[@]}") >> "$LOG_PATH" 2>&1; then
     fail "test command failed"
   fi
 fi
