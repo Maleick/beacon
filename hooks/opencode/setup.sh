@@ -177,8 +177,7 @@ if [[ -f "$ROUTING_FILE" && -z "$SELECTED_MODELS" && "$REFRESH_MODELS" != "1" ]]
 fi
 
 if ! gh auth status >/dev/null 2>&1; then
-  echo "Error: GitHub authentication required. Run 'gh auth login' or set GH_TOKEN." >&2
-  exit 1
+  echo "Warning: GitHub authentication not detected. Run 'gh auth login' before dispatch." >&2
 fi
 
 if [[ -f "$ROUTING_FILE" && -z "$SELECTED_MODELS" && "$REFRESH_MODELS" != "1" ]]; then
