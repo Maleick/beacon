@@ -386,10 +386,13 @@ chmod +x "$ISSUE_FILE_REPO/bin/gh"
 )
 safe_line=$(grep -F 'When paid model balance fails' "$ISSUE_FILE_REPO/gh-args.log" || true)
 blocked_line=$(grep -F 'stealth hook signature evasion' "$ISSUE_FILE_REPO/gh-args.log" || true)
-printf '%s\n' "$safe_line" | grep -F 'agent:ready' >/dev/null || fail "safe self-improvement issue is labeled agent:ready"
+printf '%s\n' "$safe_line" | grep -F 'agent:blocked' >/dev/null || fail "auto-filed self-improvement issue is blocked for manual review"
 printf '%s\n' "$blocked_line" | grep -F 'agent:blocked' >/dev/null || fail "unsafe self-improvement issue is blocked"
-if printf '%s\n' "$blocked_line" | grep -F 'agent:ready' >/dev/null; then
-  fail "blocked self-improvement issue must not be marked ready"
+if grep -F 'agent:ready' "$ISSUE_FILE_REPO/gh-args.log" >/dev/null 2>&1; then
+  fail "auto-filed self-improvement issues must not be marked ready"
+fi
+if grep -F 'Insufficient balance in hooks/opencode/runner.sh' "$ISSUE_FILE_REPO/gh-args.log" >/dev/null 2>&1; then
+  fail "auto-filed self-improvement issue body must redact root cause evidence"
 fi
 
 SETUP_REPO="$TMP_DIR/setup-repo"
