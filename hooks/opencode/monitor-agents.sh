@@ -1,7 +1,7 @@
 # monitor-agents-opencode.sh — Poll status files for OpenCode agents
 # Adapted from monitor-agents.sh for OpenCode's file-based status
 
-set -euo pipefail
+set -eo pipefail
 
 AUTOSHIP_DIR=".autoship"
 WORKSPACES_DIR="$AUTOSHIP_DIR/workspaces"
@@ -74,9 +74,7 @@ is_worker_live() {
   [[ -s "$pid_file" ]] || return 0
   local pid
   local pid_re='^[0-9]+$'
-  set +u
   pid=$(tr -d '[:space:]' < "$pid_file")
-  set -u
   [[ "$pid" =~ $pid_re ]] || return 1
   kill -0 "$pid" 2>/dev/null
 }
