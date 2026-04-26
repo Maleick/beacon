@@ -23,7 +23,7 @@ run_with_anti_flake() {
   fi
 
   while (( attempt <= FLAME_RETRY_COUNT )); do
-    ((attempt++))
+    ((++attempt))
 
     set +e
     "${cmd_parts[@]}" 2>&1
