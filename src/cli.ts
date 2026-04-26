@@ -6,7 +6,7 @@ import {
   readFile,
   copyFile,
   readdir,
-  stat,
+  lstat,
   access,
 } from "node:fs/promises";
 import { resolve, join } from "node:path";
@@ -31,15 +31,47 @@ function resolveConfigDir(): string {
 }
 
 async function copyDir(src: string, dest: string): Promise<void> {
+  const srcStat = await lstat(src);
+  if (srcStat.isSymbolicLink()) {
+    throw new Error(`Refusing to copy symlinked source directory: ${src}`);
+  }
+  if (!srcStat.isDirectory()) {
+    throw new Error(`Expected source directory but found non-directory: ${src}`);
+  }
+
+  try {
+    const destStat = await lstat(dest);
+    if (destStat.isSymbolicLink()) {
+      throw new Error(`Refusing to write through symlinked path: ${dest}`);
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+  }
+
   await mkdir(dest, { recursive: true });
   const entries = await readdir(src);
   for (const entry of entries) {
     const srcPath = join(src, entry);
     const destPath = join(dest, entry);
-    const st = await stat(srcPath);
+    const st = await lstat(srcPath);
+    if (st.isSymbolicLink()) {
+      throw new Error(`Refusing to copy symlinked source path: ${srcPath}`);
+    }
     if (st.isDirectory()) {
       await copyDir(srcPath, destPath);
     } else {
+      try {
+        const destStat = await lstat(destPath);
+        if (destStat.isSymbolicLink()) {
+          throw new Error(`Refusing to write through symlinked path: ${destPath}`);
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          throw error;
+        }
+      }
       await copyFile(srcPath, destPath);
     }
   }
@@ -54,6 +86,16 @@ async function loadConfig(path: string): Promise<Config> {
 }
 
 async function saveConfig(path: string, config: Config): Promise<void> {
+  try {
+    const existing = await lstat(path);
+    if (existing.isSymbolicLink()) {
+      throw new Error(`Refusing to write through symlinked config file: ${path}`);
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+  }
   await writeFile(path, JSON.stringify(config, null, 2) + "\n", "utf8");
 }
 
@@ -75,10 +117,23 @@ async function install() {
 
   for (const item of items) {
     try {
-      const st = await stat(item.src);
+      const st = await lstat(item.src);
+      if (st.isSymbolicLink()) {
+        throw new Error(`Refusing to install symlinked package asset: ${item.src}`);
+      }
       if (st.isDirectory()) {
         await copyDir(item.src, item.dest);
       } else {
+        try {
+          const destStat = await lstat(item.dest);
+          if (destStat.isSymbolicLink()) {
+            throw new Error(`Refusing to write through symlinked path: ${item.dest}`);
+          }
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+            throw error;
+          }
+        }
         await copyFile(item.src, item.dest);
       }
     } catch {
