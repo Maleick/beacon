@@ -186,8 +186,8 @@ async function doctor() {
       execSync(`command -v ${tool}`, { stdio: "ignore", shell: "/bin/sh" });
       checks.push({ name: `tool-${tool}`, status: "PASS", message: `${tool} is available` });
     } catch {
-      checks.push({ name: `tool-${tool}`, status: tool === "jq" ? "WARN" : "FAIL", message: `${tool} is not available in PATH` });
-      if (tool !== "jq") hasFailure = true;
+      checks.push({ name: `tool-${tool}`, status: "FAIL", message: `${tool} is not available in PATH` });
+      hasFailure = true;
     }
   }
 

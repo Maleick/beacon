@@ -21,9 +21,20 @@ check_diff_size() {
 
   cd "$worktree_dir"
 
-  diff_output=$(git diff --stat 2>/dev/null || true)
-  if [[ -z "$diff_output" ]]; then
-    diff_output=$(git diff --stat HEAD -- 2>/dev/null || echo "")
+  local base_ref="${DIFF_BASE_REF:-}"
+  if [[ -z "$base_ref" ]]; then
+    for ref in origin/main origin/master HEAD~1 main master; do
+      if git rev-parse --verify "$ref" >/dev/null 2>&1; then
+        base_ref="$ref"
+        break
+      fi
+    done
+  fi
+
+  if [[ -n "$base_ref" ]]; then
+    diff_output=$(git diff --stat "$base_ref"...HEAD 2>/dev/null || git diff --stat "$base_ref" HEAD 2>/dev/null || true)
+  else
+    diff_output=$(git diff --stat 2>/dev/null || true)
   fi
 
   if [[ -z "$diff_output" ]]; then
@@ -31,8 +42,13 @@ check_diff_size() {
     return 0
   fi
 
-  diff_size=$(echo "$diff_output" | awk '{sum+=$4} END {print sum}' || echo "0")
-  diff_files=$(echo "$diff_output" | tail -1 | awk '{print $1}' || echo "0")
+  if [[ -n "$base_ref" ]]; then
+    diff_size=$(git diff "$base_ref"...HEAD 2>/dev/null | wc -c | tr -d ' ' || echo "0")
+    diff_files=$(git diff --name-only "$base_ref"...HEAD 2>/dev/null | wc -l | tr -d ' ' || echo "0")
+  else
+    diff_size=$(git diff 2>/dev/null | wc -c | tr -d ' ' || echo "0")
+    diff_files=$(git diff --name-only 2>/dev/null | wc -l | tr -d ' ' || echo "0")
+  fi
 
   local status="ok"
   local exit_code=0

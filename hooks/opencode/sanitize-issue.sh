@@ -43,7 +43,7 @@ sanitize_issue_body() {
     fi
   done
 
-  if echo "$sanitized" | grep -P '[\p{C}' >/dev/null 2>&1; then
+  if LC_ALL=C grep -q '[^[:print:][:space:]]' <<< "$sanitized"; then
     log_flagged "$issue_num" "control_characters"
     sanitized=$(echo "$sanitized" | tr -cd '[:print:]\n\t' || true)
   fi
