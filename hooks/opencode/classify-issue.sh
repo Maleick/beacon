@@ -1,4 +1,4 @@
-# classify-issue-opencode.sh — Classify GitHub issue complexity for OpenCode
+# Classify GitHub issue complexity for OpenCode routing.
 
 set -euo pipefail
 
@@ -59,7 +59,6 @@ if check_protected_labels "$ISSUE_LABELS"; then
   exit 0
 fi
 
-# Check for explicit label overrides
 if echo "$ISSUE_LABELS" | jq -e '.[] | test("mode:(research|docs|complex|simple)"; "i")' >/dev/null 2>&1; then
   MODE=$(echo "$ISSUE_LABELS" | jq -r '.[] | select(test("mode:(research|docs|complex|simple)"; "i")) | capture("mode:(?<mode>.*)").mode' | head -1)
   case "$MODE" in
@@ -90,19 +89,16 @@ if echo "$ISSUE_LABELS" | jq -e '.[] | test("security|core|state-machine|archite
   exit 0
 fi
 
-# Check for rust_unsafe keyword
 if echo "$ISSUE_BODY $ISSUE_TITLE" | grep -qiE "(unsafe|rust.*memory|DLL|cdylib)"; then
   echo "rust_unsafe"
   exit 0
 fi
 
-# Check for CI/lint/test failures
 if echo "$ISSUE_BODY $ISSUE_TITLE" | grep -qiE "(ci.*fail|lint.*error|test.*fail|format.*error)"; then
   echo "ci_fix"
   exit 0
 fi
 
-# Check title keywords
 TITLE_LOWER=$(echo "$ISSUE_TITLE" | tr '[:upper:]' '[:lower:]')
 
 case "$TITLE_LOWER" in
@@ -114,7 +110,6 @@ case "$TITLE_LOWER" in
   *architecture*|*redesign*|*migration*) echo "complex"; exit 0 ;;
 esac
 
-# Default classification based on body analysis
 BODY_LENGTH=${#ISSUE_BODY}
 if (( BODY_LENGTH < 200 )); then
   echo "simple_code"

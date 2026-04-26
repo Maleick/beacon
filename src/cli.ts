@@ -12,14 +12,10 @@ import {
 import { resolve, join } from "node:path";
 import { homedir } from "node:os";
 import { execSync } from "node:child_process";
+import type { AutoshipConfig, DoctorCheck, ModelRouting, OpenCodeConfig } from "./types.js";
 
 const PACKAGE_ROOT = resolve(import.meta.dirname, "..");
 const VERSION = (await readFile(join(PACKAGE_ROOT, "VERSION"), "utf8")).trim();
-
-interface Config {
-  plugin?: string[];
-  [key: string]: unknown;
-}
 
 function resolveConfigDir(): string {
   if (process.env.OPENCODE_CONFIG_DIR) {
@@ -90,15 +86,18 @@ async function copyDir(src: string, dest: string): Promise<void> {
   }
 }
 
-async function loadConfig(path: string): Promise<Config> {
+async function loadConfig(path: string): Promise<OpenCodeConfig> {
   try {
     return JSON.parse(await readFile(path, "utf8"));
-  } catch {
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
     return {};
   }
 }
 
-async function saveConfig(path: string, config: Config): Promise<void> {
+async function saveConfig(path: string, config: OpenCodeConfig): Promise<void> {
   try {
     const existing = await lstat(path);
     if (existing.isSymbolicLink()) {
@@ -150,7 +149,10 @@ async function install() {
         }
         await copyFile(item.src, item.dest);
       }
-    } catch {
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw error;
+      }
       console.warn(`Warning: ${item.src} not found, skipping`);
     }
   }
@@ -170,8 +172,7 @@ async function install() {
   plugins = plugins.filter(
     (p) =>
       typeof p === "string" &&
-      !p.includes("autoship.ts") &&
-      !p.endsWith("/autoship.ts")
+      !p.includes("autoship.ts")
   );
 
   config.plugin = plugins;
@@ -187,13 +188,7 @@ async function doctor() {
   console.log("=====================");
   console.log();
 
-  interface Check {
-    name: string;
-    status: "PASS" | "WARN" | "FAIL";
-    message: string;
-  }
-
-  const checks: Check[] = [];
+  const checks: DoctorCheck[] = [];
   let hasFailure = false;
 
   const configDir = resolveConfigDir();
@@ -248,7 +243,7 @@ async function doctor() {
 
   try {
     const configPath = join(projectAutoshipDir, "config.json");
-    const config = JSON.parse(await readFile(configPath, "utf8"));
+    const config = JSON.parse(await readFile(configPath, "utf8")) as AutoshipConfig;
     const maxAgents = Number(config.maxConcurrentAgents ?? config.max_agents ?? 0);
     if (maxAgents > 0 && maxAgents <= 15) {
       checks.push({ name: "worker-cap", status: "PASS", message: `Worker cap is ${maxAgents}` });
@@ -320,9 +315,9 @@ async function doctor() {
         const routingPath = join(projectAutoshipDir, "model-routing.json");
         await access(routingPath);
         const routingContent = await readFile(routingPath, "utf8");
-        const routing = JSON.parse(routingContent);
+        const routing = JSON.parse(routingContent) as ModelRouting;
         const modelIds = modelsOutput.split("\n").map((l) => l.trim()).filter(Boolean);
-        const configuredModels = (routing.models || []).map((m: { id: string }) => m.id);
+        const configuredModels = (routing.models || []).map((m) => m.id);
         const missingModels = configuredModels.filter((m: string) => !modelIds.some((id: string) => id.includes(m) || m.includes(id)));
         if (missingModels.length > 0) {
           checks.push({ name: "model-routing-refs", status: "WARN", message: `Configured models not in current inventory: ${missingModels.join(", ")}` });
