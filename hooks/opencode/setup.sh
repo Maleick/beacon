@@ -134,24 +134,14 @@ parse_args() {
         usage 2
         ;;
       *)
-        POSITIONAL+=("$1")
-        shift
+        echo "Error: Unexpected argument: $1" >&2
+        usage 2
         ;;
     esac
-  done
-
-  while [[ $# -gt 0 ]]; do
-    POSITIONAL+=("$1")
-    shift
   done
 }
 
 parse_args "$@"
-
-if [[ ${#POSITIONAL[@]} -gt 0 ]]; then
-  echo "Error: Unexpected positional arguments: ${POSITIONAL[*]}" >&2
-  usage 2
-fi
 
 if [[ "$NO_TUI" -eq 0 && -t 0 ]]; then
   echo "Running in interactive mode. Use --no-tui for non-interactive."
@@ -179,18 +169,6 @@ fi
 if ! gh auth status >/dev/null 2>&1; then
   echo "Error: GitHub authentication required. Run 'gh auth login' or set GH_TOKEN." >&2
   exit 1
-fi
-
-if [[ -f "$ROUTING_FILE" && -z "$SELECTED_MODELS" && "$REFRESH_MODELS" != "1" ]]; then
-  if jq -e '(.models // []) | length > 0' "$ROUTING_FILE" >/dev/null 2>&1; then
-    if [[ ! -f "$CONFIG_FILE" ]]; then
-      jq -n --argjson max "$MAX_AGENTS" '{runtime: "opencode", maxConcurrentAgents: $max, max_agents: $max, models: []}' > "$CONFIG_FILE"
-    fi
-    echo "AutoShip OpenCode setup already configured"
-    echo "Model routing preserved: $ROUTING_FILE"
-    echo "Set AUTOSHIP_REFRESH_MODELS=1 to regenerate from current opencode models."
-    exit 0
-  fi
 fi
 
 if ! command -v opencode >/dev/null 2>&1; then

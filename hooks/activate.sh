@@ -11,10 +11,9 @@ if [[ -f "$VERSION_FILE" ]]; then
   VERSION="$(cat "$VERSION_FILE")"
 fi
 
-# Run init.sh silently if it exists
 INIT_SCRIPT="${AUTOSHIP_PLUGIN_ROOT:-$(dirname "$(dirname "$0")")}/hooks/init.sh"
 if [[ -f "$INIT_SCRIPT" ]]; then
-  bash "$INIT_SCRIPT" >/dev/null 2>&1 || true
+  bash "$INIT_SCRIPT" >/dev/null 2>&1
 fi
 
 # Inject a brief system note — this stdout becomes invisible system context

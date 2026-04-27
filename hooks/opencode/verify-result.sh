@@ -55,7 +55,11 @@ fi
 [[ "$has_diff" == true ]] || fail "git diff is empty"
 
 if [[ -n "$TEST_COMMAND" && "$TEST_COMMAND" != "none" ]]; then
-  if ! (cd "$GIT_WORKTREE" && eval "$TEST_COMMAND") >> "$LOG_PATH" 2>&1; then
+  # Validate test_command is a simple command, not a shell injection vector
+  if [[ "$TEST_COMMAND" =~ [;&|] ]]; then
+    fail "test command contains shell metacharacters"
+  fi
+  if ! (cd "$GIT_WORKTREE" && bash -c "$TEST_COMMAND") >> "$LOG_PATH" 2>&1; then
     fail "test command failed"
   fi
 fi

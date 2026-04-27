@@ -21,4 +21,4 @@ json=$(jq -n \
 echo "$json"
 
 mkdir -p "$REPO_ROOT/.autoship"
-echo "$json" | jq '.' > "${QUOTA_FILE}.tmp" 2>/dev/null && mv "${QUOTA_FILE}.tmp" "$QUOTA_FILE" || true
+echo "$json" | jq '.' > "${QUOTA_FILE}.tmp" && mv "${QUOTA_FILE}.tmp" "$QUOTA_FILE"

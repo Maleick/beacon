@@ -50,10 +50,6 @@ HOOKS_FILE="$REPO_ROOT/.autoship/hooks_dir"
 AUTOSHIP_INSTALL_DIR="$CONFIG_HOME/opencode/.autoship"
 
 jq -e '.plugin | index("opencode-autoship")' "$CONFIG_FILE" >/dev/null
-if jq -e '.plugin[] | select(type == "string" and contains("autoship.ts"))' "$CONFIG_FILE" >/dev/null; then
-  echo "FAIL: package install registered legacy autoship.ts plugin" >&2
-  exit 1
-fi
 [[ -d "$AUTOSHIP_INSTALL_DIR/hooks" ]]
 [[ -d "$AUTOSHIP_INSTALL_DIR/commands" ]]
 [[ -d "$AUTOSHIP_INSTALL_DIR/skills" ]]

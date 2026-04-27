@@ -1,7 +1,29 @@
 #!/usr/bin/env bash
+# Dependency graph: lib/common.sh (optional), select-model.sh, create-worktree.sh, pr-title.sh, update-state.sh
+# Leaf callers: update-state.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Load shared utilities if available; inline fallback for standalone/test use.
+if [[ -f "$SCRIPT_DIR/lib/common.sh" ]]; then
+  source "$SCRIPT_DIR/lib/common.sh"
+else
+  autoship_repo_root() {
+    git rev-parse --show-toplevel 2>/dev/null || {
+      echo "Error: not inside a git repository" >&2
+      return 1
+    }
+  }
+  autoship_state_set() {
+    local action="$1" issue_key="$2"
+    shift 2
+    local repo_root
+    repo_root="$(autoship_repo_root)"
+    bash "$repo_root/hooks/update-state.sh" "$action" "$issue_key" "$@"
+  }
+fi
+
 DRY_RUN=false
 POSITIONAL=()
 
@@ -14,13 +36,15 @@ for arg in "$@"; do
 done
 
 ISSUE_NUM="${POSITIONAL[0]:?Issue number required}"
+# Validate issue number is numeric
+if [[ ! "$ISSUE_NUM" =~ ^[0-9]+$ ]]; then
+  echo "Error: issue number must be numeric, got: $ISSUE_NUM" >&2
+  exit 1
+fi
 TASK_TYPE="${POSITIONAL[1]:-medium_code}"
 MODEL_OVERRIDE="${POSITIONAL[2]:-}"
 
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
-  echo "Error: not inside a git repository" >&2
-  exit 1
-}
+REPO_ROOT=$(autoship_repo_root) || exit 1
 cd "$REPO_ROOT"
 
 AUTOSHIP_DIR=".autoship"
@@ -43,7 +67,15 @@ if [[ -z "$max_agents" && -f "$AUTOSHIP_DIR/config.json" ]]; then
   max_agents=$(jq -r '.maxConcurrentAgents // .max_agents // empty' "$AUTOSHIP_DIR/config.json" 2>/dev/null || true)
 fi
 max_agents="${max_agents:-15}"
+# Validate max_agents is numeric
+if [[ ! "$max_agents" =~ ^[0-9]+$ ]]; then
+  max_agents=15
+fi
 running=$(jq '[.issues | to_entries[] | select((.value.state // .value.status) == "running")] | length' "$STATE_FILE" 2>/dev/null || echo 0)
+# Validate running is numeric
+if [[ ! "$running" =~ ^[0-9]+$ ]]; then
+  running=0
+fi
 cap_note=""
 if (( running >= max_agents )); then
   cap_note="CAP_REACHED: $running active / $max_agents max; workspace will remain queued"
@@ -96,7 +128,7 @@ if [[ -z "$MODEL" ]]; then
   mkdir -p "$WORKSPACE_PATH"
   printf 'BLOCKED\n' > "$WORKSPACE_PATH/status"
   printf 'No configured OpenCode model is available for task type %s. Run hooks/opencode/setup.sh to choose models.\n' "$TASK_TYPE" > "$WORKSPACE_PATH/BLOCKED_REASON.txt"
-  bash "$REPO_ROOT/hooks/update-state.sh" set-blocked "$ISSUE_KEY" reason="no configured OpenCode model for $TASK_TYPE" 2>/dev/null || true
+  autoship_state_set set-blocked "$ISSUE_KEY" reason="no configured OpenCode model for $TASK_TYPE"
   echo "BLOCKED $ISSUE_KEY: no configured OpenCode model for $TASK_TYPE"
   exit 0
 fi
@@ -149,7 +181,7 @@ Use this conventional PR title when creating a PR:
 $(bash "$SCRIPT_DIR/pr-title.sh" --issue "$ISSUE_NUM" --title "$TITLE" --labels "$LABELS")
 EOF
 
-bash "$REPO_ROOT/hooks/update-state.sh" set-queued "$ISSUE_KEY" agent="$MODEL" model="$MODEL" role="$ROLE" task_type="$TASK_TYPE" 2>/dev/null || true
+autoship_state_set set-queued "$ISSUE_KEY" agent="$MODEL" model="$MODEL" role="$ROLE" task_type="$TASK_TYPE"
 
 echo "Queued issue #$ISSUE_NUM for $MODEL ($TASK_TYPE, role=$ROLE)"
 [[ -n "$cap_note" ]] && echo "$cap_note"

@@ -62,12 +62,10 @@ manage_labels() {
   shift 2
   local remove_labels=("$@")
 
-  # Check if gh is available and repo info exists
   if ! command -v gh >/dev/null 2>&1; then
     return 0
   fi
 
-  # Get repo slug from state.json
   local repo_slug
   repo_slug=$(jq -r '.repo // empty' "$STATE_FILE") || return 0
   if [[ -z "$repo_slug" ]]; then
@@ -91,8 +89,7 @@ manage_labels() {
 
   # Remove old labels first
   for old_label in "${remove_labels[@]}"; do
-    # Verify the label exists before trying to remove it
-    if gh label list --repo "$repo_slug" --json name --jq ".[].name" 2>/dev/null | grep -q "^${old_label}$"; then
+      if gh label list --repo "$repo_slug" --json name --jq ".[].name" 2>/dev/null | grep -q "^${old_label}$"; then
       gh issue edit "$issue_id" --repo "$repo_slug" --remove-label "$old_label" 2>/dev/null || true
     fi
   done
@@ -143,10 +140,10 @@ append_ledger_record() {
     fi
   fi
 
-  # Coerce pr_number, attempt, and tokens_used to integers
-  pr_number=$(( ${pr_number:-0} )) || pr_number=0
-  attempt=$(( ${attempt:-1} )) || attempt=1
-  tokens_used=$(( ${tokens_used:-0} )) || tokens_used=0
+  # Validate and coerce pr_number, attempt, and tokens_used to integers
+  if [[ ! "$pr_number" =~ ^[0-9]+$ ]]; then pr_number=0; fi
+  if [[ ! "$attempt" =~ ^[0-9]+$ ]]; then attempt=1; fi
+  if [[ ! "$tokens_used" =~ ^[0-9]+$ ]]; then tokens_used=0; fi
 
   # Build the record JSON
   local record
@@ -219,7 +216,6 @@ ISSUE_ID="issue-${ISSUE_NUMBER}"
 
 NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-# Cleanup temp files on exit
 TMP_FILES=()
 cleanup() { for f in "${TMP_FILES[@]+"${TMP_FILES[@]}"}"; do rm -f "$f"; done; }
 trap cleanup EXIT
@@ -464,7 +460,7 @@ fi
 
 # Append issue record to token ledger for completion events
 if [[ "$ACTION" == "set-completed" || "$ACTION" == "set-merged" ]]; then
-  append_ledger_record "$ISSUE_ID" "pass" || true
+  append_ledger_record "$ISSUE_ID" "pass"
 fi
 
 # Manage GitHub labels for lifecycle transitions
@@ -494,8 +490,13 @@ for pair in "$@"; do
   fi
 
   TMP=$(make_tmp)
+  # Validate KEY: reject empty or jq-special keys
+  if [[ -z "$KEY" || "$KEY" =~ ^[[:space:]]+$ ]]; then
+    echo "Warning: skipping empty key for $ISSUE_ID" >&2
+    continue
+  fi
   # Try to parse as JSON (for numbers/booleans), fall back to string
-  if echo "$VALUE" | jq -e '.' >/dev/null 2>&1; then
+  if printf '%s\n' "$VALUE" | jq -e '.' >/dev/null 2>&1; then
     jq --arg id "$ISSUE_ID" --arg key "$KEY" --argjson val "$VALUE" \
       '.issues[$id][$key] = $val' \
       "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"

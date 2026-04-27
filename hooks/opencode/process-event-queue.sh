@@ -1,23 +1,46 @@
 #!/usr/bin/env bash
+# Dependency graph: lib/common.sh (optional), classify-issue.sh, dispatch.sh, runner.sh, update-state.sh
+# Leaf callers: update-state.sh
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Load shared utilities if available; inline fallback for standalone/test use.
+if [[ -f "$SCRIPT_DIR/lib/common.sh" ]]; then
+  source "$SCRIPT_DIR/lib/common.sh"
+else
+  autoship_repo_root() {
+    git rev-parse --show-toplevel 2>/dev/null || {
+      echo "Error: not inside a git repository" >&2
+      return 1
+    }
+  }
+  autoship_require_cmd() {
+    local cmd="$1"
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+      echo "Error: $cmd is required but not found" >&2
+      return 1
+    fi
+  }
+  autoship_state_set() {
+    local action="$1" issue_key="$2"
+    shift 2
+    local repo_root
+    repo_root="$(autoship_repo_root)"
+    bash "$repo_root/hooks/update-state.sh" "$action" "$issue_key" "$@" 2>/dev/null || true
+  }
+fi
+
+REPO_ROOT=$(autoship_repo_root) || exit 1
+cd "$REPO_ROOT"
 
 AUTOSHIP_DIR=".autoship"
 WORKSPACES_DIR="$AUTOSHIP_DIR/workspaces"
 EVENT_QUEUE="$AUTOSHIP_DIR/event-queue.json"
 PROCESSED_EVENTS="$AUTOSHIP_DIR/processed-events.json"
 LOCK_FILE="$AUTOSHIP_DIR/event-queue.lock"
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
-  echo "Error: not inside a git repository" >&2
-  exit 1
-}
-cd "$REPO_ROOT"
-
-if ! command -v jq >/dev/null 2>&1; then
-  echo "Error: jq is required but not found" >&2
-  exit 1
-fi
+autoship_require_cmd jq || exit 1
 
 if [[ -z "${AUTOSHIP_QUEUE_LOCKED:-}" ]]; then
   export AUTOSHIP_QUEUE_LOCKED=1
@@ -212,7 +235,7 @@ apply_state_once() {
       ;;
   esac
 
-  bash "$SCRIPT_DIR/../update-state.sh" "$action" "$issue"
+  autoship_state_set "$action" "$issue"
 }
 
 process_event() {

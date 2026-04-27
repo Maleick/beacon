@@ -1,16 +1,35 @@
 #!/usr/bin/env bash
+# Dependency graph: lib/common.sh (optional), pr-title.sh, update-state.sh
+# Leaf callers: update-state.sh
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Load shared utilities if available; inline fallback for standalone/test use.
+if [[ -f "$SCRIPT_DIR/lib/common.sh" ]]; then
+  source "$SCRIPT_DIR/lib/common.sh"
+else
+  autoship_repo_root() {
+    git rev-parse --show-toplevel 2>/dev/null || {
+      echo "Error: not inside a git repository" >&2
+      return 1
+    }
+  }
+  autoship_state_set() {
+    local action="$1" issue_key="$2"
+    shift 2
+    local repo_root
+    repo_root="$(autoship_repo_root)"
+    bash "$repo_root/hooks/update-state.sh" "$action" "$issue_key" "$@" 2>/dev/null || true
+  }
+fi
 
 ISSUE_KEY="${1:?Issue key required}"
 WORKTREE_PATH="${2:?Worktree path required}"
 RESULT_PATH="${3:-$WORKTREE_PATH/AUTOSHIP_RESULT.md}"
 MODE="${AUTOSHIP_PR_MODE:-dry-run}"
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
-  echo "Error: not inside a git repository" >&2
-  exit 1
-}
+REPO_ROOT=$(autoship_repo_root) || exit 1
 
 canonical_dir() {
   cd "$1" && pwd -P
@@ -84,7 +103,7 @@ trap 'rm -f "$BODY_FILE"' EXIT
 } > "$BODY_FILE"
 
 if [[ "$MODE" != "live" && "${AUTOSHIP_ENABLE_PR_CREATE:-false}" != "true" ]]; then
-  bash "$REPO_ROOT/hooks/update-state.sh" set-completed "$ISSUE_KEY" pr_mode=dry-run pr_title="$TITLE" 2>/dev/null || true
+  autoship_state_set set-completed "$ISSUE_KEY" pr_mode=dry-run pr_title="$TITLE"
   echo "DRY_RUN: would create PR for $ISSUE_KEY"
   echo "Title: $TITLE"
   echo "Body file: $BODY_FILE"
@@ -110,9 +129,9 @@ PR_URL=$(gh pr create \
 
 PR_NUMBER=$(printf '%s\n' "$PR_URL" | grep -Eo '[0-9]+$' | tail -1 || true)
 if [[ -n "$PR_NUMBER" ]]; then
-  bash "$REPO_ROOT/hooks/update-state.sh" set-completed "$ISSUE_KEY" pr_mode=live pr_number="$PR_NUMBER" 2>/dev/null || true
+  autoship_state_set set-completed "$ISSUE_KEY" pr_mode=live pr_number="$PR_NUMBER"
 else
-  bash "$REPO_ROOT/hooks/update-state.sh" set-completed "$ISSUE_KEY" pr_mode=live 2>/dev/null || true
+  autoship_state_set set-completed "$ISSUE_KEY" pr_mode=live
 fi
 
 printf '%s\n' "$PR_URL"

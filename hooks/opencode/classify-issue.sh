@@ -10,7 +10,6 @@ ISSUE_TITLE=$(gh issue view "$ISSUE_NUM" --json title --jq '.title' 2>/dev/null 
 ISSUE_LABELS=$(gh issue view "$ISSUE_NUM" --json labels --jq '[.labels[].name]' 2>/dev/null || echo "[]")
 LABEL_TEXT=$(echo "$ISSUE_LABELS" | jq -r 'join(",")' 2>/dev/null || echo "")
 
-# Check for explicit label overrides
 if echo "$ISSUE_LABELS" | jq -e '.[] | test("mode:(research|docs|complex|simple)"; "i")' >/dev/null 2>&1; then
   MODE=$(echo "$ISSUE_LABELS" | jq -r '.[] | select(test("mode:(research|docs|complex|simple)"; "i")) | capture("mode:(?<mode>.*)").mode' | head -1)
   case "$MODE" in
@@ -41,19 +40,16 @@ if echo "$ISSUE_LABELS" | jq -e '.[] | test("security|core|state-machine|archite
   exit 0
 fi
 
-# Check for rust_unsafe keyword
 if echo "$ISSUE_BODY $ISSUE_TITLE" | grep -qiE "(unsafe|rust.*memory|DLL|cdylib)"; then
   echo "rust_unsafe"
   exit 0
 fi
 
-# Check for CI/lint/test failures
 if echo "$ISSUE_BODY $ISSUE_TITLE" | grep -qiE "(ci.*fail|lint.*error|test.*fail|format.*error)"; then
   echo "ci_fix"
   exit 0
 fi
 
-# Check title keywords
 TITLE_LOWER=$(echo "$ISSUE_TITLE" | tr '[:upper:]' '[:lower:]')
 
 case "$TITLE_LOWER" in

@@ -26,7 +26,6 @@ echo "AutoShip v${AUTOSHIP_VERSION} initializing for OpenCode..."
 
 bash "$SCRIPT_DIR/sync-release.sh"
 
-# Check dependencies
 if ! command -v jq >/dev/null 2>&1; then
   echo "Warning: jq not found. Install with: brew install jq" >&2
 fi
@@ -35,18 +34,15 @@ if ! command -v gh >/dev/null 2>&1; then
   echo "Warning: gh not found. Install with: brew install gh" >&2
 fi
 
-# Derive repo from git remote
 REPO_SLUG=""
 REMOTE_URL=$(git remote get-url origin 2>/dev/null) || true
 if [[ -n "$REMOTE_URL" ]]; then
   REPO_SLUG=$(echo "$REMOTE_URL" | sed -E 's#^.+[:/]([^/]+/[^/]+)(\.git)?$#\1#' | sed 's/\.git$//')
 fi
 
-# Create directory structure
 mkdir -p "$WORKSPACES_DIR"
 mkdir -p "$AUTOSHIP_DIR/results"
 
-# Initialize files
 [[ ! -f "$AUTOSHIP_DIR/event-queue.json" ]] && echo '[]' > "$AUTOSHIP_DIR/event-queue.json"
 [[ ! -f "$AUTOSHIP_DIR/.pr-monitor-seen.json" ]] && echo '{}' > "$AUTOSHIP_DIR/.pr-monitor-seen.json"
 [[ ! -f "$AUTOSHIP_DIR/model-history.json" ]] && echo '{}' > "$AUTOSHIP_DIR/model-history.json"
@@ -91,7 +87,6 @@ if [[ ! -f "$STATE_FILE" ]]; then
     }' > "$STATE_FILE"
   echo "Initialized $STATE_FILE"
 else
-  # Refresh tools and reset session counters
   NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   jq --arg now "$NOW" \
      --arg ver "$AUTOSHIP_VERSION" \
@@ -105,18 +100,15 @@ else
   echo "Refreshed $STATE_FILE"
 fi
 
-# Detect OpenCode runtime
 DETECTED_TOOLS="{}"
 if command -v opencode >/dev/null 2>&1; then
   DETECTED_TOOLS=$(jq '.opencode = {"available": true}' <<< "$DETECTED_TOOLS")
 fi
 
-# Update tools in state
 jq --argjson tools "$DETECTED_TOOLS" \
   '.tools = {"opencode": {"status": (if $tools.opencode.available == true then "available" else "unavailable" end), "quota_pct": -1}}' \
   "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
 
-# Initialize token ledger
 init_token_ledger() {
   if ! command -v jq >/dev/null 2>&1; then return 0; fi
   local now session_id
@@ -137,7 +129,6 @@ init_token_ledger() {
 }
 init_token_ledger
 
-# Create GitHub labels
 if command -v gh >/dev/null 2>&1 && [[ -n "$REPO_SLUG" ]]; then
   for pair in "autoship:in-progress=FFEB3B" "autoship:blocked=F44336" "autoship:paused=FF9800" "autoship:done=4CAF50"; do
     label="${pair%%=*}"
@@ -146,7 +137,6 @@ if command -v gh >/dev/null 2>&1 && [[ -n "$REPO_SLUG" ]]; then
   done
 fi
 
-# Load routing config
 load_routing_config() {
   local routing_file="$AUTOSHIP_DIR/routing.json"
   local model_routing_file="$AUTOSHIP_DIR/model-routing.json"
@@ -169,14 +159,12 @@ load_routing_config() {
     printf '%s\n' "$DEFAULT_ROUTING" > "$routing_file"
     return 0
   fi
-  # Simple YAML front matter extraction
   local front_matter
   front_matter=$(awk '/^---$/{if(p){exit}else{p=1;next}} p{print}' "$autoship_md" 2>/dev/null) || front_matter=""
   if [[ -z "$front_matter" ]]; then
     printf '%s\n' "$DEFAULT_ROUTING" > "$routing_file"
     return 0
   fi
-  # Parse and validate (simplified for OpenCode)
   printf '%s\n' "$DEFAULT_ROUTING" > "$routing_file"
 }
 load_routing_config
@@ -184,7 +172,6 @@ load_routing_config
 # Write the repo hooks directory so shared hooks can resolve sibling scripts.
 echo "$REPO_ROOT/hooks" > "$AUTOSHIP_DIR/hooks_dir"
 
-# Sweep stale worktrees
 echo "Scanning for stale worktrees..."
 
 echo "AutoShip OpenCode workspace ready at $AUTOSHIP_DIR"

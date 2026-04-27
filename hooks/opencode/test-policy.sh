@@ -34,9 +34,7 @@ assert_canonical_inventory() {
   local repo_root
   repo_root="$(cd "$SCRIPT_DIR/../.." && pwd)"
   local canonical_commands="autoship.md autoship-plan.md autoship-status.md autoship-setup.md autoship-stop.md"
-  local compatibility_commands="autoship-start.md start.md plan.md status.md setup.md stop.md"
   local canonical_skills="autoship-orchestrate autoship-dispatch autoship-verify autoship-status autoship-poll autoship-setup autoship-discord-webhook autoship-discord-commands"
-  local compatibility_skills="orchestrate dispatch verify status poll setup discord-webhook discord-commands"
 
   local command
   for command in $canonical_commands; do
@@ -46,24 +44,12 @@ assert_canonical_inventory() {
     fi
   done
 
-  for command in $compatibility_commands; do
-    [[ -f "$repo_root/commands/$command" ]] || fail "compatibility command alias $command is missing"
-    assert_file_contains "$repo_root/commands/$command" 'compatibility: true' "command alias $command must declare compatibility metadata"
-    assert_file_contains "$repo_root/commands/$command" 'compatibility-only' "command alias $command must be clearly marked compatibility-only"
-  done
-
   local skill
   for skill in $canonical_skills; do
     [[ -f "$repo_root/skills/$skill/SKILL.md" ]] || fail "canonical skill $skill is missing"
     if grep -F 'compatibility-only' "$repo_root/skills/$skill/SKILL.md" >/dev/null; then
       fail "canonical skill $skill must not be marked compatibility-only"
     fi
-  done
-
-  for skill in $compatibility_skills; do
-    [[ -f "$repo_root/skills/$skill/SKILL.md" ]] || fail "compatibility skill alias $skill is missing"
-    assert_file_contains "$repo_root/skills/$skill/SKILL.md" 'compatibility: true' "skill alias $skill must declare compatibility metadata"
-    assert_file_contains "$repo_root/skills/$skill/SKILL.md" 'compatibility-only' "skill alias $skill must be clearly marked compatibility-only"
   done
 }
 
@@ -1330,7 +1316,7 @@ cp -R "$SCRIPT_DIR/../.." "$PACKAGE_REPO"
   assert_eq "opencode-autoship $(cat VERSION)" "$(node dist/cli.js --version)" "package CLI prints version with --version"
   CONFIG_DIR="$TMP_DIR/package-config"
   mkdir -p "$CONFIG_DIR"
-  printf '%s\n' '{"plugin":["file:///tmp/legacy/autoship.ts","other-plugin"],"customSetting":true}' > "$CONFIG_DIR/opencode.json"
+  printf '%s\n' '{"plugin":["other-plugin"],"customSetting":true}' > "$CONFIG_DIR/opencode.json"
   install_output=$(OPENCODE_CONFIG_DIR="$CONFIG_DIR" node dist/cli.js install)
   if printf '%s\n' "$install_output" | grep -F 'opencode-autoship vv' >/dev/null; then
     fail "package installer must not print a double-v version"
@@ -1338,9 +1324,6 @@ cp -R "$SCRIPT_DIR/../.." "$PACKAGE_REPO"
   jq -e '.plugin | index("opencode-autoship")' "$CONFIG_DIR/opencode.json" >/dev/null || fail "package installer registers opencode-autoship plugin"
   jq -e '.plugin | index("other-plugin")' "$CONFIG_DIR/opencode.json" >/dev/null || fail "package installer preserves unrelated plugins"
   jq -e '.customSetting == true' "$CONFIG_DIR/opencode.json" >/dev/null || fail "package installer preserves unrelated config"
-  if jq -e '.plugin[] | select(type == "string" and contains("autoship.ts"))' "$CONFIG_DIR/opencode.json" >/dev/null; then
-    fail "package installer removes legacy autoship.ts plugin entries"
-  fi
   test -d "$CONFIG_DIR/.autoship/hooks" || fail "package installer copies hooks"
   test -d "$CONFIG_DIR/.autoship/commands" || fail "package installer copies commands"
   test -d "$CONFIG_DIR/.autoship/skills" || fail "package installer copies skills"

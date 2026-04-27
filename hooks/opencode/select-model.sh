@@ -19,6 +19,10 @@ fi
 
 TASK_TYPE="${1:-simple_code}"
 ISSUE_NUM="${2:-0}"
+# Validate ISSUE_NUM is numeric
+if [[ ! "$ISSUE_NUM" =~ ^[0-9]+$ ]]; then
+  ISSUE_NUM=0
+fi
 ROUTING_FILE=".autoship/model-routing.json"
 HISTORY_FILE=".autoship/model-history.json"
 
@@ -38,39 +42,53 @@ if [[ -n "$POOL" ]]; then
 fi
 
 if [[ "$LOG" == true ]]; then
-  jq -r --arg task "$TASK_TYPE" --argjson issue "$ISSUE_NUM" --slurpfile history "$HISTORY_FILE" '
-    def hist($id):
-      (($history[0] // {})[$id] // {success: 0, fail: 0});
-    def compatible:
-      (.enabled // true) == true
-      and (((.max_task_types // []) | length == 0) or ((.max_task_types // []) | index($task) != null));
-    def cost_score:
-      if .cost == "free" then 100
-      elif (.id | test("(^|/)gpt-5\\.3-codex-spark$|spark"; "i")) then 85
-      elif (.id | startswith("opencode-go/")) then 80
-      elif (.cost // "") == "selected" then 70
-      else 50 end;
-    def reason:
-      if .cost == "free" then "free model selected by default"
-      elif (.id | test("(^|/)gpt-5\\.3-codex-spark$|spark"; "i")) then "Spark model selected for complex task suitability"
-      elif (.cost // "") == "selected" then "operator-selected model for task"
-      else "model selected as fallback" end;
-    [.models[] | select(compatible) |
-      . as $m |
-      (hist($m.id)) as $h |
-      .score = ((cost_score) + (.strength // 0) + (($h.success // 0) * 12) - (($h.fail // 0) * 20))
-      | .reason = reason
-    ] | sort_by(-.score, .id) |
-    . as $candidates |
-    if length > 0 then
-      "routing_log:" +
-      (map("\nselection: \(.id)\nscore: \(.score)\nreason: \(.reason)") | join("")) +
-      "\nfinal_selection: " + $candidates[0].id +
-      "\nfinal_reason: " + $candidates[0].reason
-    else
-      "routing_log:\nfinal_selection:"
-    end
-  ' "$ROUTING_FILE"
+# Shared jq filter definitions
+JQ_DEFS='
+def hist($id):
+  (($history[0] // {})[$id] // {success: 0, fail: 0});
+def compatible:
+  (.enabled // true) == true
+  and (((.max_task_types // []) | length == 0) or ((.max_task_types // []) | index($task) != null));
+def cost_score:
+  if .cost == "free" then 100
+  elif (.id | test("(^|/)gpt-5\.3-codex-spark$|spark"; "i")) then 85
+  elif (.id | startswith("opencode-go/")) then 80
+  elif (.cost // "") == "selected" then 70
+  else 50 end;
+def reason:
+  if .cost == "free" then "free model selected by default"
+  elif (.id | test("(^|/)gpt-5\.3-codex-spark$|spark"; "i")) then "Spark model selected for complex task suitability"
+  elif (.cost // "") == "selected" then "operator-selected model for task"
+  else "model selected as fallback" end;
+def scored_model:
+  . as $m |
+  (hist($m.id)) as $h |
+  .score = ((cost_score) + (.strength // 0) + (($h.success // 0) * 12) - (($h.fail // 0) * 20)) |
+  .reason = reason;
+def compatible_models:
+  [(.models // [])[] | select(compatible) | scored_model];
+def sorted_models:
+  compatible_models | sort_by(-.score, .id);
+'
+
+if [[ "$LOG" == true ]]; then
+  jq -r --arg task "$TASK_TYPE" --argjson issue "$ISSUE_NUM" --slurpfile history "$HISTORY_FILE" "${JQ_DEFS}
+sorted_models |
+. as $candidates |
+if length > 0 then
+  \"routing_log:\" +
+  (map(\"\\nselection: \(.id)\\nscore: \(.score)\\nreason: \(.reason)\") | join(\"\")) +
+  \"\\nfinal_selection: \" + $candidates[0].id +
+  \"\\nfinal_reason: \" + $candidates[0].reason
+else
+  \"routing_log:\\nfinal_selection:\"
+end" "$ROUTING_FILE"
+  exit 0
+fi
+
+jq -r --arg task "$TASK_TYPE" --argjson issue "$ISSUE_NUM" --slurpfile history "$HISTORY_FILE" "${JQ_DEFS}
+sorted_models |
+if length > 0 then .[0].id else empty end" "$ROUTING_FILE"
   exit 0
 fi
 

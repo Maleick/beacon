@@ -35,7 +35,7 @@ FAILURES_DIR="$AUTOSHIP_DIR/failures"
 STATE_FILE="$AUTOSHIP_DIR/state.json"
 
 CATEGORY="${1:-usage}"
-shift 2>/dev/null || true
+shift
 
 case "$CATEGORY" in
   stuck|failed_verification|reviewer_rejection|model_failure|e2e_failure) ;;
@@ -59,6 +59,12 @@ fi
 
 ISSUE_NUMBER="${ISSUE_ID#issue-}"
 ISSUE_ID="issue-${ISSUE_NUMBER}"
+
+# Validate ISSUE_NUMBER is numeric
+if [[ ! "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
+  echo "Error: invalid ISSUE_NUMBER: $ISSUE_NUMBER" >&2
+  exit 1
+fi
 
 mkdir -p "$FAILURES_DIR"
 

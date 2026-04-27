@@ -16,6 +16,8 @@ import { execSync } from "node:child_process";
 const PACKAGE_ROOT = resolve(import.meta.dirname, "..");
 const VERSION = (await readFile(join(PACKAGE_ROOT, "VERSION"), "utf8")).trim();
 
+import type { AutoshipConfig, DoctorCheck } from "./types.ts";
+
 interface Config {
   plugin?: string[];
   [key: string]: unknown;
@@ -60,7 +62,12 @@ async function copyDir(src: string, dest: string): Promise<void> {
 
 async function loadConfig(path: string): Promise<Config> {
   try {
-    return JSON.parse(await readFile(path, "utf8"));
+    const raw = await readFile(path, "utf8");
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return {};
+    }
+    return parsed as Config;
   } catch {
     return {};
   }
@@ -112,13 +119,6 @@ async function install() {
     plugins = [...plugins, newPlugin];
   }
 
-  plugins = plugins.filter(
-    (p) =>
-      typeof p === "string" &&
-      !p.includes("autoship.ts") &&
-      !p.endsWith("/autoship.ts")
-  );
-
   config.plugin = plugins;
   await saveConfig(configPath, config);
 
@@ -132,13 +132,7 @@ async function doctor() {
   console.log("=====================");
   console.log();
 
-  interface Check {
-    name: string;
-    status: "PASS" | "WARN" | "FAIL";
-    message: string;
-  }
-
-  const checks: Check[] = [];
+  const checks: DoctorCheck[] = [];
   let hasFailure = false;
 
   const configDir = resolveConfigDir();
@@ -244,10 +238,10 @@ async function doctor() {
         const routingPath = join(projectAutoshipDir, "model-routing.json");
         await access(routingPath);
         const routingContent = await readFile(routingPath, "utf8");
-        const routing = JSON.parse(routingContent);
+        const routing = JSON.parse(routingContent) as { models?: Array<{ id: string }> };
         const modelIds = modelsOutput.split("\n").map((l) => l.trim()).filter(Boolean);
-        const configuredModels = (routing.models || []).map((m: { id: string }) => m.id);
-        const missingModels = configuredModels.filter((m: string) => !modelIds.some((id: string) => id.includes(m) || m.includes(id)));
+        const configuredModels = (routing.models || []).map((m) => m.id);
+        const missingModels = configuredModels.filter((m) => !modelIds.some((id) => id.includes(m) || m.includes(id)));
         if (missingModels.length > 0) {
           checks.push({ name: "model-routing-refs", status: "WARN", message: `Configured models not in current inventory: ${missingModels.join(", ")}` });
         } else {

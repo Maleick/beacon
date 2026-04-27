@@ -1,14 +1,33 @@
+#!/usr/bin/env bash
 # monitor-agents-opencode.sh — Poll status files for OpenCode agents
-# Adapted from monitor-agents.sh for OpenCode's file-based status
-
+# Dependency graph: lib/common.sh (optional), capture-failure.sh, reconcile-state.sh
+# Leaf callers: capture-failure.sh, reconcile-state.sh
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Load shared utilities if available; inline fallback for standalone/test use.
+if [[ -f "$SCRIPT_DIR/lib/common.sh" ]]; then
+  source "$SCRIPT_DIR/lib/common.sh"
+else
+  autoship_repo_root() {
+    git rev-parse --show-toplevel 2>/dev/null || pwd
+  }
+  autoship_capture_failure() {
+    local category="$1" issue_id="$2"
+    shift 2
+    local repo_root
+    repo_root="$(autoship_repo_root)"
+    bash "$repo_root/hooks/capture-failure.sh" "$category" "$issue_id" "$@" 2>/dev/null || true
+  }
+fi
+
+REPO_ROOT="$(autoship_repo_root)"
 
 AUTOSHIP_DIR=".autoship"
 WORKSPACES_DIR="$AUTOSHIP_DIR/workspaces"
 EVENT_QUEUE="$AUTOSHIP_DIR/event-queue.json"
 LOCK_FILE="$AUTOSHIP_DIR/event-queue.lock"
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
 [[ ! -d "$WORKSPACES_DIR" ]] && exit 0
 mkdir -p "$AUTOSHIP_DIR"
@@ -76,6 +95,10 @@ check_stalled() {
     timeout_ms=$(jq -r '.config.workerTimeoutMs // .config.stall_timeout_ms // empty' "$STATE_FILE" 2>/dev/null || true)
   fi
   timeout_ms="${timeout_ms:-900000}"
+  # Validate timeout_ms is numeric
+  if [[ ! "$timeout_ms" =~ ^[0-9]+$ ]]; then
+    timeout_ms=900000
+  fi
   timeout_secs=$((timeout_ms / 1000))
   (( timeout_secs > 0 )) || timeout_secs=900
 
@@ -83,9 +106,7 @@ check_stalled() {
     local current_status=$(cat "$status_file" 2>/dev/null || echo "")
     if [[ "$current_status" == "RUNNING" ]]; then
       echo "STUCK" > "$status_file"
-      if [[ -x "$REPO_ROOT/hooks/capture-failure.sh" ]]; then
-        bash "$REPO_ROOT/hooks/capture-failure.sh" timeout "$key" "error_summary=worker exceeded ${timeout_secs}s runtime" 2>/dev/null || true
-      fi
+      autoship_capture_failure timeout "$key" "error_summary=worker exceeded ${timeout_secs}s runtime"
       emit_event "stuck" "$key" "STUCK"
     fi
   fi
@@ -121,9 +142,7 @@ reconcile_exited_worker() {
     emit_event "verify" "$key" "COMPLETE"
   else
     echo "STUCK" > "$status_file"
-    if [[ -x "$REPO_ROOT/hooks/capture-failure.sh" ]]; then
-      bash "$REPO_ROOT/hooks/capture-failure.sh" dead_worker "$key" "error_summary=worker process exited without fresh result" 2>/dev/null || true
-    fi
+    autoship_capture_failure dead_worker "$key" "error_summary=worker process exited without fresh result"
     emit_event "stuck" "$key" "STUCK"
   fi
 }
@@ -154,4 +173,4 @@ for dir in "$WORKSPACES_DIR"/*/; do
   esac
 done
 
-bash "$SCRIPT_DIR/reconcile-state.sh" >/dev/null 2>&1 || true
+bash "$SCRIPT_DIR/reconcile-state.sh" >/dev/null 2>&1
