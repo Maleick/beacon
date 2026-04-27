@@ -366,6 +366,77 @@ assert_eq "COMPLETE" "$(tr -d '[:space:]' < "$AUTOCOMMIT_REPO/.autoship/workspac
 assert_eq "2" "$(git -C "$AUTOCOMMIT_REPO/.autoship/workspaces/issue-253" rev-list --count HEAD)" "runner auto-commits worker changes before completion"
 git -C "$AUTOCOMMIT_REPO/.autoship/workspaces/issue-253" diff --quiet || fail "runner leaves no unstaged worker changes after auto-commit"
 
+CARGO_RUNNER_REPO="$TMP_DIR/cargo-runner-repo"
+mkdir -p "$CARGO_RUNNER_REPO/.autoship/workspaces/issue-401" "$CARGO_RUNNER_REPO/hooks/opencode" "$CARGO_RUNNER_REPO/hooks" "$CARGO_RUNNER_REPO/bin"
+git init -q "$CARGO_RUNNER_REPO"
+touch "$CARGO_RUNNER_REPO/Cargo.toml"
+cp "$SCRIPT_DIR/runner.sh" "$CARGO_RUNNER_REPO/hooks/opencode/runner.sh"
+cp "$SCRIPT_DIR/policy.sh" "$CARGO_RUNNER_REPO/hooks/opencode/policy.sh"
+cp "$SCRIPT_DIR/../update-state.sh" "$CARGO_RUNNER_REPO/hooks/update-state.sh"
+cp "$SCRIPT_DIR/../capture-failure.sh" "$CARGO_RUNNER_REPO/hooks/capture-failure.sh"
+chmod +x "$CARGO_RUNNER_REPO/hooks/opencode/runner.sh" "$CARGO_RUNNER_REPO/hooks/update-state.sh" "$CARGO_RUNNER_REPO/hooks/capture-failure.sh"
+cat > "$CARGO_RUNNER_REPO/.autoship/state.json" <<'JSON'
+{"issues":{"issue-401":{"state":"queued","model":"opencode/test-free","role":"implementer","task_type":"medium_code"}},"stats":{},"config":{"maxConcurrentAgents":15,"cargoTargetIsolationThreshold":8}}
+JSON
+printf 'QUEUED\n' > "$CARGO_RUNNER_REPO/.autoship/workspaces/issue-401/status"
+printf 'test prompt\n' > "$CARGO_RUNNER_REPO/.autoship/workspaces/issue-401/AUTOSHIP_PROMPT.md"
+printf 'opencode/test-free\n' > "$CARGO_RUNNER_REPO/.autoship/workspaces/issue-401/model"
+cat > "$CARGO_RUNNER_REPO/bin/opencode" <<'SH'
+#!/usr/bin/env bash
+case "${CARGO_TARGET_DIR:-}" in
+  */target-isolated) printf 'COMPLETE\n' > status; printf 'cargo isolated\n' > AUTOSHIP_RESULT.md; exit 0 ;;
+  *) printf 'missing cargo isolation\n' >&2; exit 1 ;;
+esac
+SH
+chmod +x "$CARGO_RUNNER_REPO/bin/opencode"
+(
+  cd "$CARGO_RUNNER_REPO"
+  PATH="$CARGO_RUNNER_REPO/bin:$PATH" bash hooks/opencode/runner.sh >/dev/null
+)
+for _ in 1 2 3 4 5; do
+  [[ "$(tr -d '[:space:]' < "$CARGO_RUNNER_REPO/.autoship/workspaces/issue-401/status")" != "RUNNING" ]] && break
+  sleep 1
+done
+assert_eq "COMPLETE" "$(tr -d '[:space:]' < "$CARGO_RUNNER_REPO/.autoship/workspaces/issue-401/status")" "runner sets isolated CARGO_TARGET_DIR above threshold"
+
+SALVAGE_REPO="$TMP_DIR/salvage-runner-repo"
+mkdir -p "$SALVAGE_REPO/.autoship/workspaces/issue-402" "$SALVAGE_REPO/hooks/opencode" "$SALVAGE_REPO/hooks" "$SALVAGE_REPO/bin"
+git init -q "$SALVAGE_REPO"
+cp "$SCRIPT_DIR/runner.sh" "$SALVAGE_REPO/hooks/opencode/runner.sh"
+cp "$SCRIPT_DIR/../update-state.sh" "$SALVAGE_REPO/hooks/update-state.sh"
+cp "$SCRIPT_DIR/../capture-failure.sh" "$SALVAGE_REPO/hooks/capture-failure.sh"
+chmod +x "$SALVAGE_REPO/hooks/opencode/runner.sh" "$SALVAGE_REPO/hooks/update-state.sh" "$SALVAGE_REPO/hooks/capture-failure.sh"
+git -C "$SALVAGE_REPO/.autoship/workspaces/issue-402" init -q
+git -C "$SALVAGE_REPO/.autoship/workspaces/issue-402" config user.email autoship@example.invalid
+git -C "$SALVAGE_REPO/.autoship/workspaces/issue-402" config user.name AutoShip
+mkdir -p "$SALVAGE_REPO/.autoship/workspaces/issue-402/src"
+printf 'base\n' > "$SALVAGE_REPO/.autoship/workspaces/issue-402/src/lib.rs"
+git -C "$SALVAGE_REPO/.autoship/workspaces/issue-402" add src/lib.rs
+git -C "$SALVAGE_REPO/.autoship/workspaces/issue-402" commit -q -m initial
+cat > "$SALVAGE_REPO/.autoship/state.json" <<'JSON'
+{"issues":{"issue-402":{"state":"queued","model":"opencode/test-free","role":"implementer","task_type":"medium_code"}},"stats":{},"config":{"maxConcurrentAgents":15,"truncationSalvage":true}}
+JSON
+printf 'QUEUED\n' > "$SALVAGE_REPO/.autoship/workspaces/issue-402/status"
+printf 'test prompt\n' > "$SALVAGE_REPO/.autoship/workspaces/issue-402/AUTOSHIP_PROMPT.md"
+printf 'opencode/test-free\n' > "$SALVAGE_REPO/.autoship/workspaces/issue-402/model"
+cat > "$SALVAGE_REPO/bin/opencode" <<'SH'
+#!/usr/bin/env bash
+printf 'salvaged\n' >> src/lib.rs
+exit 0
+SH
+chmod +x "$SALVAGE_REPO/bin/opencode"
+(
+  cd "$SALVAGE_REPO"
+  PATH="$SALVAGE_REPO/bin:$PATH" bash hooks/opencode/runner.sh >/dev/null
+)
+for _ in 1 2 3 4 5; do
+  [[ "$(tr -d '[:space:]' < "$SALVAGE_REPO/.autoship/workspaces/issue-402/status")" != "RUNNING" ]] && break
+  sleep 1
+done
+assert_eq "COMPLETE" "$(tr -d '[:space:]' < "$SALVAGE_REPO/.autoship/workspaces/issue-402/status")" "runner salvages truncated worker with implementation changes"
+test -s "$SALVAGE_REPO/.autoship/workspaces/issue-402/AUTOSHIP_RESULT.md" || fail "salvage writes AUTOSHIP_RESULT.md"
+assert_eq "2" "$(git -C "$SALVAGE_REPO/.autoship/workspaces/issue-402" rev-list --count HEAD)" "salvage commits worker changes"
+
 TESTS_ONLY_REPO="$TMP_DIR/tests-only-runner-repo"
 mkdir -p "$TESTS_ONLY_REPO/.autoship/workspaces/issue-254" "$TESTS_ONLY_REPO/hooks/opencode" "$TESTS_ONLY_REPO/hooks" "$TESTS_ONLY_REPO/bin"
 git init -q "$TESTS_ONLY_REPO"
