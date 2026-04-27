@@ -53,7 +53,7 @@ autoship_capture_failure() {
   shift 2
   local repo_root
   repo_root="$(autoship_repo_root)"
-  bash "$repo_root/hooks/capture-failure.sh" "$category" "$issue_id" "$@"
+  bash "$repo_root/hooks/capture-failure.sh" "$category" "$issue_id" "$@" 2>/dev/null || true
 }
 
 # ── Config value reader ─────────────────────────────────────────
