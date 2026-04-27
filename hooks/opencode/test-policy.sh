@@ -109,6 +109,13 @@ docs_title=$(bash "$SCRIPT_DIR/pr-title.sh" --issue 2296 --title "mandate poison
 assert_eq "fix: Validate Discord webhook URLs (#2298)" "$fix_title" "bug/security title uses fix prefix"
 assert_eq "docs: mandate poison recovery pattern (#2296)" "$docs_title" "documentation title uses docs prefix"
 
+web_fix_title=$(bash "$SCRIPT_DIR/pr-title.sh" --issue 3321 --title "Fix loot route error" --labels "bug,web,agent:ready")
+tui_feat_title=$(bash "$SCRIPT_DIR/pr-title.sh" --issue 3322 --title "Add characters tab filter" --labels "tui,agent:ready")
+ci_title=$(bash "$SCRIPT_DIR/pr-title.sh" --issue 3323 --title "Update validate workflow" --labels "ci-cd,agent:ready")
+assert_eq "fix(web): Fix loot route error (#3321)" "$web_fix_title" "bug/web title uses fix(web) prefix"
+assert_eq "feat(tui): Add characters tab filter (#3322)" "$tui_feat_title" "tui title uses feat(tui) prefix"
+assert_eq "ci: Update validate workflow (#3323)" "$ci_title" "ci-cd title uses ci prefix"
+
 PACKAGE_VERIFY_REPO="$TMP_DIR/package-verify-repo"
 mkdir -p "$PACKAGE_VERIFY_REPO/dist" "$PACKAGE_VERIFY_REPO/hooks/opencode" "$PACKAGE_VERIFY_REPO/commands" "$PACKAGE_VERIFY_REPO/skills/autoship-setup" "$PACKAGE_VERIFY_REPO/plugins" "$PACKAGE_VERIFY_REPO/policies" "$PACKAGE_VERIFY_REPO/.autoship"
 cp "$SCRIPT_DIR/../../package.json" "$PACKAGE_VERIFY_REPO/package.json"
@@ -148,7 +155,7 @@ mkdir -p "$STATE_REPO/.autoship/workspaces/issue-746" "$STATE_REPO/.autoship/wor
 mkdir -p "$STATE_REPO/.autoship/workspaces/issue-751"
 mkdir -p "$STATE_REPO/.autoship/workspaces/issue-752"
 cat > "$STATE_REPO/.autoship/state.json" <<'JSON'
-{"config":{"maxConcurrentAgents":15},"issues":{"issue-746":{"state":"running"},"issue-749":{"state":"running"},"issue-750":{"state":"running"},"issue-751":{"state":"queued"}},"stats":{}}
+{"config":{"maxConcurrentAgents":15,"mergeStrategy":"high_throughput","policyProfile":"textquest"},"issues":{"issue-746":{"state":"running"},"issue-749":{"state":"running"},"issue-750":{"state":"running"},"issue-751":{"state":"queued"}},"stats":{}}
 JSON
 printf 'COMPLETE\n' > "$STATE_REPO/.autoship/workspaces/issue-746/status"
 printf 'BLOCKED\n' > "$STATE_REPO/.autoship/workspaces/issue-749/status"
@@ -179,6 +186,8 @@ printf '%s\n' "$STATUS_OUTPUT" | grep -F 'Queued:    1' >/dev/null || fail "stat
 printf '%s\n' "$STATUS_OUTPUT" | grep -F 'Completed: 0' >/dev/null || fail "status shows completed count"
 printf '%s\n' "$STATUS_OUTPUT" | grep -F 'Blocked:   1' >/dev/null || fail "status shows blocked count"
 assert_eq "stuck" "$(jq -r '.issues["issue-750"].state' "$STATE_REPO/.autoship/state.json")" "status monitor refresh marks dead running worker stuck"
+printf '%s\n' "$STATUS_OUTPUT" | grep -F 'Policy:     textquest' >/dev/null || fail "status shows policy profile"
+printf '%s\n' "$STATUS_OUTPUT" | grep -F 'Merge:      high_throughput' >/dev/null || fail "status shows merge strategy"
 
 NO_RUNNING_REPO="$TMP_DIR/no-running-repo"
 mkdir -p "$NO_RUNNING_REPO/.autoship/workspaces/issue-999"
