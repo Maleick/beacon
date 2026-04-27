@@ -149,6 +149,8 @@ Use this conventional PR title when creating a PR:
 $(bash "$SCRIPT_DIR/pr-title.sh" --issue "$ISSUE_NUM" --title "$TITLE" --labels "$LABELS")
 EOF
 
+$(bash "$SCRIPT_DIR/prompt-policy.sh" "$TITLE" "$BODY" "$LABELS" "$FULL_WORKSPACE_PATH")
+
 bash "$REPO_ROOT/hooks/update-state.sh" set-queued "$ISSUE_KEY" agent="$MODEL" model="$MODEL" role="$ROLE" task_type="$TASK_TYPE" 2>/dev/null || true
 
 echo "Queued issue #$ISSUE_NUM for $MODEL ($TASK_TYPE, role=$ROLE)"

@@ -1461,13 +1461,15 @@ git init -q "$PROMPT_REPO"
 cp "$SCRIPT_DIR/dispatch.sh" "$PROMPT_REPO/hooks/opencode/dispatch.sh"
 cp "$SCRIPT_DIR/create-worktree.sh" "$PROMPT_REPO/hooks/opencode/create-worktree.sh"
 cp "$SCRIPT_DIR/pr-title.sh" "$PROMPT_REPO/hooks/opencode/pr-title.sh"
-cp "$SCRIPT_DIR/policy.sh" "$PROMPT_REPO/hooks/opencode/policy.sh"
+cp "$SCRIPT_DIR/policy.sh" "$PROMPT_REPO/hooks/opencode/policy.sh" || true
+cp "$SCRIPT_DIR/prompt-policy.sh" "$PROMPT_REPO/hooks/opencode/prompt-policy.sh" 2>/dev/null || true
 cp "$SCRIPT_DIR/../update-state.sh" "$PROMPT_REPO/hooks/update-state.sh"
 cp "$SCRIPT_DIR/../../policies/default.json" "$PROMPT_REPO/policies/default.json"
 cp "$SCRIPT_DIR/../../policies/textquest.json" "$PROMPT_REPO/policies/textquest.json"
 cat > "$PROMPT_REPO/.autoship/state.json" <<'JSON'
 {"issues":{},"stats":{},"config":{"maxConcurrentAgents":15,"policyProfile":"textquest","cargoTimeoutSeconds":120,"cargoTargetIsolationThreshold":8}}
 JSON
+echo '{"policyProfile":"textquest"}' > "$PROMPT_REPO/.autoship/config.json"
 cat > "$PROMPT_REPO/.autoship/model-routing.json" <<'JSON'
 {"models":[{"id":"opencode/test-free","cost":"free","strength":80,"max_task_types":["medium_code"]}]}
 JSON
