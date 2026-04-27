@@ -83,7 +83,8 @@ cat > "$ISSUES_FILE" <<'JSON'
   {"number": 746, "title": "low safe docs", "body": "update docs", "labels": [{"name": "agent:ready"}, {"name": "documentation"}, {"name": "size-s"}]},
   {"number": 748, "title": "VM fingerprint evasion research", "body": "hide hooks from anti-cheat detection", "labels": [{"name": "agent:ready"}, {"name": "security"}]},
   {"number": 749, "title": "middle safe bug", "body": "fix the setting", "labels": [{"name": "agent:ready"}, {"name": "bug"}]},
-  {"number": 750, "title": "already running", "body": "safe", "labels": [{"name": "agent:ready"}, {"name": "agent:running"}]}
+  {"number": 750, "title": "already running", "body": "safe", "labels": [{"name": "agent:ready"}, {"name": "agent:running"}]},
+  {"number": 751, "title": "Improve TUI Characters tab", "body": "Touch textquest/src/tui/characters_tab.rs", "labels": [{"name": "agent:ready"}, {"name": "tui"}]}
 ]
 JSON
 
@@ -92,8 +93,10 @@ bash "$SCRIPT_DIR/plan-issues.sh" --issues-file "$ISSUES_FILE" --limit 10 > "$PL
 
 eligible_numbers=$(jq -r '.eligible[].number' "$PLAN_OUTPUT" | paste -sd ' ' -)
 blocked_numbers=$(jq -r '.blocked[].number' "$PLAN_OUTPUT" | paste -sd ' ' -)
-assert_eq "746 748 749 2301" "$eligible_numbers" "eligible issues are sorted ascending and exclude only terminal/manual labels"
+assert_eq "746 748 749 751 2301" "$eligible_numbers" "eligible issues are sorted ascending and exclude only terminal/manual labels"
 assert_eq "" "$blocked_numbers" "content-based safety filter does not block issues"
+
+jq -e '.eligible[] | select(.number == 751 and (.probable_files | index("textquest/src/tui/characters_tab.rs")) and .overlap_cluster == "tui-characters")' "$PLAN_OUTPUT" >/dev/null || fail "plan emits probable files and overlap cluster metadata"
 
 limited_numbers=$(bash "$SCRIPT_DIR/plan-issues.sh" --issues-file "$ISSUES_FILE" --limit 2 | jq -r '.eligible[].number' | paste -sd ' ' -)
 assert_eq "746 748" "$limited_numbers" "plan limit caps eligible queue"
@@ -1112,6 +1115,31 @@ ROUTING_LOG_COMPLEX=$(cd "$SELECT_REPO" && bash hooks/opencode/select-model.sh -
 assert_eq "true" "$(echo "$ROUTING_LOG_COMPLEX" | grep -q "final_selection: openai/gpt-5.3-codex-spark" && echo "true" || echo "false")" "routing log shows Spark for complex task"
 assert_eq "true" "$(echo "$ROUTING_LOG_COMPLEX" | grep -q "Spark model selected for complex task" && echo "true" || echo "false")" "routing log shows escalation reason for Spark"
 
+TOOLS_REPO="$TMP_DIR/tools-repo"
+mkdir -p "$TOOLS_REPO/bin" "$TOOLS_REPO/.autoship" "$TOOLS_REPO/hooks"
+git init -q "$TOOLS_REPO"
+cp "$SCRIPT_DIR/../detect-tools.sh" "$TOOLS_REPO/hooks/detect-tools.sh"
+cat > "$TOOLS_REPO/bin/opencode" <<'SH'
+#!/usr/bin/env bash
+case "$1" in --version) printf 'opencode 1.0\n' ;; *) printf 'ok\n' ;; esac
+SH
+cat > "$TOOLS_REPO/bin/gemini" <<'SH'
+#!/usr/bin/env bash
+printf 'gemini ok\n'
+SH
+cat > "$TOOLS_REPO/bin/codex" <<'SH'
+#!/usr/bin/env bash
+printf 'codex ok\n'
+SH
+chmod +x "$TOOLS_REPO/bin/opencode" "$TOOLS_REPO/bin/gemini" "$TOOLS_REPO/bin/codex"
+TOOLS_JSON=$(cd "$TOOLS_REPO" && PATH="$TOOLS_REPO/bin:$PATH" bash hooks/detect-tools.sh)
+jq -e '.opencode.available == true and .gemini.available == true and .codex.available == true and .codex.requires_bypass_opt_in == true' <<< "$TOOLS_JSON" >/dev/null || fail "detect-tools records opencode, gemini, and codex availability"
+
+cat > "$SELECT_REPO/.autoship/model-routing.json" <<'JSON'
+{"models":[{"id":"openai/gpt-5.3-codex-spark","cost":"selected","strength":95,"max_task_types":["complex"]},{"id":"opencode/free-safe","cost":"free","strength":80,"max_task_types":["complex"]}]}
+JSON
+assert_eq "opencode/free-safe" "$(cd "$SELECT_REPO" && bash hooks/opencode/select-model.sh complex 109)" "selector avoids Spark by default"
+
 UPDATE_REPO="$TMP_DIR/update-repo"
 mkdir -p "$UPDATE_REPO/.autoship" "$UPDATE_REPO/bin" "$UPDATE_REPO/hooks"
 git init -q "$UPDATE_REPO"
@@ -1426,5 +1454,41 @@ printf 'v0.0.0\n' > "$VERSION_ALIGNMENT_DIR/plugins/autoship.version"
 assert_version_alignment_fails "$VERSION_ALIGNMENT_DIR" 'GitHub release tag marker'
 
 bash "$SCRIPT_DIR/test-model-parsing.sh" >/dev/null
+
+PROMPT_REPO="$TMP_DIR/prompt-repo"
+mkdir -p "$PROMPT_REPO/hooks/opencode" "$PROMPT_REPO/hooks" "$PROMPT_REPO/policies" "$PROMPT_REPO/.autoship" "$PROMPT_REPO/bin"
+git init -q "$PROMPT_REPO"
+cp "$SCRIPT_DIR/dispatch.sh" "$PROMPT_REPO/hooks/opencode/dispatch.sh"
+cp "$SCRIPT_DIR/create-worktree.sh" "$PROMPT_REPO/hooks/opencode/create-worktree.sh"
+cp "$SCRIPT_DIR/pr-title.sh" "$PROMPT_REPO/hooks/opencode/pr-title.sh"
+cp "$SCRIPT_DIR/policy.sh" "$PROMPT_REPO/hooks/opencode/policy.sh"
+cp "$SCRIPT_DIR/../update-state.sh" "$PROMPT_REPO/hooks/update-state.sh"
+cp "$SCRIPT_DIR/../../policies/default.json" "$PROMPT_REPO/policies/default.json"
+cp "$SCRIPT_DIR/../../policies/textquest.json" "$PROMPT_REPO/policies/textquest.json"
+cat > "$PROMPT_REPO/.autoship/state.json" <<'JSON'
+{"issues":{},"stats":{},"config":{"maxConcurrentAgents":15,"policyProfile":"textquest","cargoTimeoutSeconds":120,"cargoTargetIsolationThreshold":8}}
+JSON
+cat > "$PROMPT_REPO/.autoship/model-routing.json" <<'JSON'
+{"models":[{"id":"opencode/test-free","cost":"free","strength":80,"max_task_types":["medium_code"]}]}
+JSON
+cat > "$PROMPT_REPO/bin/gh" <<'SH'
+#!/usr/bin/env bash
+if [[ "$1 $2" == "issue view" ]]; then
+  case "$*" in
+    *title*) printf 'Add field to AppState and update workflow\n' ;;
+    *body*) printf 'Add a field to textquest-web::AppState and a GitHub Actions workflow.\n' ;;
+    *labels*) printf 'web,agent:ready\n' ;;
+  esac
+fi
+SH
+chmod +x "$PROMPT_REPO/bin/gh" "$PROMPT_REPO/hooks/opencode/dispatch.sh" "$PROMPT_REPO/hooks/opencode/create-worktree.sh"
+(
+  cd "$PROMPT_REPO"
+  PATH="$PROMPT_REPO/bin:$PATH" bash hooks/opencode/dispatch.sh 321 medium_code >/dev/null
+)
+assert_file_contains "$PROMPT_REPO/.autoship/workspaces/issue-321/AUTOSHIP_PROMPT.md" "Do NOT cd anywhere else" "dispatch prompt includes cwd lock"
+assert_file_contains "$PROMPT_REPO/.autoship/workspaces/issue-321/AUTOSHIP_PROMPT.md" "CARGO_TARGET_DIR" "dispatch prompt includes cargo target isolation guidance"
+assert_file_contains "$PROMPT_REPO/.autoship/workspaces/issue-321/AUTOSHIP_PROMPT.md" "textquest-web/src/test_support.rs:28" "dispatch prompt includes hot fixture registry"
+assert_file_contains "$PROMPT_REPO/.autoship/workspaces/issue-321/AUTOSHIP_PROMPT.md" "[self-hosted, Linux, textquest]" "dispatch prompt includes workflow runner policy"
 
 echo "OpenCode policy tests passed"

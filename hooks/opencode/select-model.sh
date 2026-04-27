@@ -46,13 +46,13 @@ if [[ "$LOG" == true ]]; then
       and (((.max_task_types // []) | length == 0) or ((.max_task_types // []) | index($task) != null));
     def cost_score:
       if .cost == "free" then 100
-      elif (.id | test("(^|/)gpt-5\\.3-codex-spark$|spark"; "i")) then 85
+      elif (.id | test("(^|/)gpt-5\\.3-codex-spark$|spark"; "i")) then -1000
       elif (.id | startswith("opencode-go/")) then 80
       elif (.cost // "") == "selected" then 70
       else 50 end;
     def reason:
       if .cost == "free" then "free model selected by default"
-      elif (.id | test("(^|/)gpt-5\\.3-codex-spark$|spark"; "i")) then "Spark model selected for complex task suitability"
+      elif (.id | test("(^|/)gpt-5\\.3-codex-spark$|spark"; "i")) then "Spark model excluded by default (AUTOSHIP_ALLOW_SPARK=true to enable)"
       elif (.cost // "") == "selected" then "operator-selected model for task"
       else "model selected as fallback" end;
     [.models[] | select(compatible) |
@@ -82,7 +82,7 @@ jq -r --arg task "$TASK_TYPE" --argjson issue "$ISSUE_NUM" --slurpfile history "
     and (((.max_task_types // []) | length == 0) or ((.max_task_types // []) | index($task) != null));
   def cost_score:
     if .cost == "free" then 100
-    elif (.id | test("(^|/)gpt-5\\.3-codex-spark$|spark"; "i")) then 85
+    elif (.id | test("(^|/)gpt-5\\.3-codex-spark$|spark"; "i")) then -1000
     elif (.id | startswith("opencode-go/")) then 80
     elif (.cost // "") == "selected" then 70
     else 50 end;
