@@ -1185,7 +1185,7 @@ JSON
 
 ROUTING_LOG_COMPLEX=$(cd "$SELECT_REPO" && bash hooks/opencode/select-model.sh --log complex 102)
 assert_eq "true" "$(echo "$ROUTING_LOG_COMPLEX" | grep -q "final_selection: openai/gpt-5.3-codex-spark" && echo "true" || echo "false")" "routing log shows Spark for complex task"
-assert_eq "true" "$(echo "$ROUTING_LOG_COMPLEX" | grep -q "Spark model selected for complex task" && echo "true" || echo "false")" "routing log shows escalation reason for Spark"
+assert_eq "true" "$(echo "$ROUTING_LOG_COMPLEX" | grep -q "Spark model excluded by default" && echo "true" || echo "false")" "routing log shows Spark exclusion reason"
 
 TOOLS_REPO="$TMP_DIR/tools-repo"
 mkdir -p "$TOOLS_REPO/bin" "$TOOLS_REPO/.autoship" "$TOOLS_REPO/hooks"
