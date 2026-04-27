@@ -75,6 +75,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 test -f "$REPO_ROOT/commands/autoship-setup.md" || fail "canonical /autoship-setup command file is installed"
 grep -F '| `/autoship-setup` |' "$REPO_ROOT/README.md" >/dev/null || fail "README public command table includes /autoship-setup"
 grep -F '| `/autoship-setup` |' "$REPO_ROOT/commands/autoship.md" >/dev/null || fail "/autoship command table includes /autoship-setup"
+grep -F 'cargoConcurrencyCap' "$REPO_ROOT/README.md" >/dev/null || fail "README documents cargo concurrency policy"
+grep -F 'high_throughput' "$REPO_ROOT/README.md" >/dev/null || fail "README documents high throughput merge strategy"
 
 ISSUES_FILE="$TMP_DIR/issues.json"
 cat > "$ISSUES_FILE" <<'JSON'

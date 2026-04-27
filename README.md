@@ -97,6 +97,8 @@ Setup defaults to ranked free models from the current OpenCode inventory. Operat
 
 The selected routing is saved to `.autoship/model-routing.json`. Edit that file manually to tune model eligibility, strength, or task types. Setup preserves manual edits by default; use `AUTOSHIP_REFRESH_MODELS=1 bash hooks/opencode/setup.sh` to regenerate from the current OpenCode inventory.
 
+AutoShip also loads committed policy profiles from `policies/`. Policies enrich worker prompts, configure Rust cargo safeguards, guide overlap-aware dispatch, and enforce repo-specific hazards such as self-hosted GitHub Actions runners.
+
 ## Defaults
 
 - Max active workers: `15`
@@ -104,6 +106,9 @@ The selected routing is saved to `.autoship/model-routing.json`. Edit that file 
 - Model routing: ranked free OpenCode models first
 - Planner/coordinator/orchestrator/reviewer: `openai/gpt-5.5`
 - Worker selection: best configured model per task, with free, Spark, Go-provider, and other selected models eligible when available
+- Policy profile: `default` unless repo detection selects a committed profile such as `textquest`
+- Rust cargo cap: `cargoConcurrencyCap: 8` with isolated `CARGO_TARGET_DIR` above `cargoTargetIsolationThreshold: 8`
+- Merge strategy: `safe` by default; `high_throughput` is an explicit burndown mode for operators who accept post-wave fix-ups
 
 ## How It Works
 
