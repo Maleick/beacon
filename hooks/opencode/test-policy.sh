@@ -986,6 +986,22 @@ chmod +x "$SETUP_REPO/bin/opencode"
   jq -e '.roles.lead == "openai/gpt-5.5"' .autoship/model-routing.json >/dev/null || fail "setup accepts lead model override via AUTOSHIP_LEAD_MODEL"
 )
 
+POLICY_REPO="$TMP_DIR/policy-repo"
+mkdir -p "$POLICY_REPO/hooks/opencode" "$POLICY_REPO/policies" "$POLICY_REPO/.autoship"
+cp "$SCRIPT_DIR/policy.sh" "$POLICY_REPO/hooks/opencode/policy.sh"
+cp "$SCRIPT_DIR/../../policies/default.json" "$POLICY_REPO/policies/default.json"
+cp "$SCRIPT_DIR/../../policies/textquest.json" "$POLICY_REPO/policies/textquest.json"
+cat > "$POLICY_REPO/.autoship/config.json" <<'JSON'
+{"policyProfile":"textquest","mergeStrategy":"high_throughput","cargoConcurrencyCap":6,"cargoTargetIsolationThreshold":9,"cargoTimeoutSeconds":90,"quotaRouting":false}
+JSON
+assert_eq "textquest" "$(cd "$POLICY_REPO" && bash hooks/opencode/policy.sh profile)" "policy loader reads configured profile"
+assert_eq "6" "$(cd "$POLICY_REPO" && bash hooks/opencode/policy.sh value cargoConcurrencyCap)" "policy loader prefers config cargo cap"
+assert_eq "9" "$(cd "$POLICY_REPO" && bash hooks/opencode/policy.sh value cargoTargetIsolationThreshold)" "policy loader prefers config target isolation threshold"
+assert_eq "90" "$(cd "$POLICY_REPO" && bash hooks/opencode/policy.sh value cargoTimeoutSeconds)" "policy loader prefers config cargo timeout"
+assert_eq "high_throughput" "$(cd "$POLICY_REPO" && bash hooks/opencode/policy.sh value mergeStrategy)" "policy loader reads merge strategy"
+assert_eq "false" "$(cd "$POLICY_REPO" && bash hooks/opencode/policy.sh value quotaRouting)" "policy loader reads quota routing"
+assert_eq "[self-hosted, Linux, textquest]" "$(cd "$POLICY_REPO" && bash hooks/opencode/policy.sh value workflowRunnerDefault)" "policy loader reads TextQuest runner policy"
+
 SELECT_REPO="$TMP_DIR/select-repo"
 mkdir -p "$SELECT_REPO/.autoship" "$SELECT_REPO/hooks/opencode"
 cp "$SCRIPT_DIR/select-model.sh" "$SELECT_REPO/hooks/opencode/select-model.sh"
