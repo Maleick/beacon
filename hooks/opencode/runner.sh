@@ -299,9 +299,25 @@ for dir in "$WORKSPACES_DIR"/*/; do
   prompt_file="$dir/AUTOSHIP_PROMPT.md"
   model_file="$dir/model"
   role_file="$dir/role"
+  retry_after_file="$dir/retry_after"
   [[ -f "$status_file" && -f "$prompt_file" ]] || continue
   status=$(tr -d '[:space:]' < "$status_file")
   [[ "$status" == "QUEUED" ]] || continue
+
+  # Skip workspaces with pending retry delay
+  if [[ -f "$retry_after_file" ]]; then
+    retry_after=$(tr -d '[:space:]' < "$retry_after_file")
+    if [[ -n "$retry_after" ]]; then
+      retry_epoch=$(date -u -d "$retry_after" +%s 2>/dev/null || date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$retry_after" +%s 2>/dev/null || echo 0)
+      now_epoch=$(date +%s)
+      if [[ "$retry_epoch" -gt "$now_epoch" ]]; then
+        echo "SKIP_RETRY: $(basename "$dir") retry_after=$retry_after"
+        continue
+      fi
+      # Clear the retry_after once it's passed
+      rm -f "$retry_after_file"
+    fi
+  fi
 
   active=$(active_count)
   if (( active >= MAX )); then
