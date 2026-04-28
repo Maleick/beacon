@@ -71,6 +71,18 @@ max_agents="${max_agents:-15}"
 if [[ ! "$max_agents" =~ ^[0-9]+$ ]]; then
   max_agents=15
 fi
+
+# Check system resources and potentially reduce concurrency cap
+if [[ -x "$SCRIPT_DIR/resource-monitor.sh" ]]; then
+  resource_info=$(bash "$SCRIPT_DIR/resource-monitor.sh" "$max_agents" 2>/dev/null || echo '{"load_status":"ok","recommended_max_concurrent":'$max_agents'}')
+  resource_status=$(echo "$resource_info" | jq -r '.load_status // "ok"')
+  recommended_max=$(echo "$resource_info" | jq -r '.recommended_max_concurrent // '$max_agents)
+  if [[ "$resource_status" != "ok" && "$recommended_max" =~ ^[0-9]+$ && "$recommended_max" -lt "$max_agents" ]]; then
+    echo "RESOURCE_${resource_status^^}: CPU/MEM load high, reducing concurrency from $max_agents to $recommended_max" >&2
+    max_agents="$recommended_max"
+  fi
+fi
+
 running=$(jq '[.issues | to_entries[] | select((.value.state // .value.status) == "running")] | length' "$STATE_FILE" 2>/dev/null || echo 0)
 # Validate running is numeric
 if [[ ! "$running" =~ ^[0-9]+$ ]]; then
