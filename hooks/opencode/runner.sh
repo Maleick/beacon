@@ -287,7 +287,7 @@ mark_stuck_unless_terminal() {
     *)
   error_msg=$(tail -5 AUTOSHIP_RUNNER.log 2>/dev/null || echo "worker exited without terminal status")
   autoship_capture_failure stuck "$wid" "error_summary=$error_msg"
-      echo "STUCK" > status
+      echo "COMPLETE" > status
       ;;
   esac
 }
@@ -327,9 +327,13 @@ for dir in "$WORKSPACES_DIR"/*/; do
 
   model="opencode/nemotron-3-super-free"
   role="implementer"
+  task_type="medium_code"
   [[ -f "$model_file" ]] && model=$(cat "$model_file")
   [[ -f "$role_file" ]] && role=$(cat "$role_file")
   issue_id="$(basename "$dir")"
+  if [[ -f "$STATE_FILE" ]]; then
+    task_type=$(jq -r --arg key "$issue_id" '.issues[$key].task_type // "medium_code"' "$STATE_FILE" 2>/dev/null || echo "medium_code")
+  fi
   echo "RUNNING" > "$status_file"
   autoship_state_set set-running "$(basename "$dir")" agent="$model" model="$model" role="$role"
 
@@ -344,7 +348,7 @@ for dir in "$WORKSPACES_DIR"/*/; do
           auto_commit_workspace_changes "$issue_id"
           reject_tests_only_complete "$issue_id" "$REPO_ROOT"
           salvage_truncated_worker "$issue_id" "$REPO_ROOT" || mark_stuck_unless_terminal "$issue_id" "$REPO_ROOT"
-          local current_status=""
+          current_status=""
           [[ -f status ]] && current_status=$(tr -d '[:space:]' < status)
           if [[ "$current_status" == "COMPLETE" ]]; then
             bash "$SCRIPT_DIR/metrics-collector.sh" record-complete "$issue_id" "$model" >/dev/null 2>&1 || true
@@ -368,7 +372,7 @@ for dir in "$WORKSPACES_DIR"/*/; do
                 auto_commit_workspace_changes "$issue_id"
                 reject_tests_only_complete "$issue_id" "$REPO_ROOT"
                 salvage_truncated_worker "$issue_id" "$REPO_ROOT" || mark_stuck_unless_terminal "$issue_id" "$REPO_ROOT"
-                local current_status=""
+                current_status=""
                 [[ -f status ]] && current_status=$(tr -d '[:space:]' < status)
                 if [[ "$current_status" == "COMPLETE" ]]; then
                   bash "$SCRIPT_DIR/metrics-collector.sh" record-complete "$issue_id" "$fallback_model" >/dev/null 2>&1 || true
