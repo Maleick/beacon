@@ -322,26 +322,44 @@ for dir in "$WORKSPACES_DIR"/*/; do
   else
     (
       cd "$dir"
+      bash "$SCRIPT_DIR/metrics-collector.sh" record-start "$issue_id" "$model" "$task_type" >/dev/null 2>&1 || true
       if command -v opencode >/dev/null 2>&1; then
         if run_worker "$model" > AUTOSHIP_RUNNER.log 2>&1; then
           auto_commit_workspace_changes "$issue_id"
           reject_tests_only_complete "$issue_id" "$REPO_ROOT"
           salvage_truncated_worker "$issue_id" "$REPO_ROOT" || mark_stuck_unless_terminal "$issue_id" "$REPO_ROOT"
+          local current_status=""
+          [[ -f status ]] && current_status=$(tr -d '[:space:]' < status)
+          if [[ "$current_status" == "COMPLETE" ]]; then
+            bash "$SCRIPT_DIR/metrics-collector.sh" record-complete "$issue_id" "$model" >/dev/null 2>&1 || true
+          else
+            bash "$SCRIPT_DIR/metrics-collector.sh" record-failure "$issue_id" "$model" >/dev/null 2>&1 || true
+          fi
         else
           if is_billing_or_quota_failure AUTOSHIP_RUNNER.log; then
             record_model_failure "$model" AUTOSHIP_RUNNER.log
+            bash "$SCRIPT_DIR/metrics-collector.sh" record-failure "$issue_id" "$model" >/dev/null 2>&1 || true
             fallback_model=$(select_free_fallback_model "$model" || true)
             if [[ -n "$fallback_model" ]]; then
               printf '%s\n' "$fallback_model" > model
               autoship_state_set set-running "$issue_id" agent="$fallback_model" model="$fallback_model" role="$role"
+              bash "$SCRIPT_DIR/metrics-collector.sh" record-start "$issue_id" "$fallback_model" "$task_type" >/dev/null 2>&1 || true
               if run_worker "$fallback_model" >> AUTOSHIP_RUNNER.log 2>&1; then
                 auto_commit_workspace_changes "$issue_id"
                 reject_tests_only_complete "$issue_id" "$REPO_ROOT"
                 salvage_truncated_worker "$issue_id" "$REPO_ROOT" || mark_stuck_unless_terminal "$issue_id" "$REPO_ROOT"
+                local current_status=""
+                [[ -f status ]] && current_status=$(tr -d '[:space:]' < status)
+                if [[ "$current_status" == "COMPLETE" ]]; then
+                  bash "$SCRIPT_DIR/metrics-collector.sh" record-complete "$issue_id" "$fallback_model" >/dev/null 2>&1 || true
+                else
+                  bash "$SCRIPT_DIR/metrics-collector.sh" record-failure "$issue_id" "$fallback_model" >/dev/null 2>&1 || true
+                fi
               else
                 echo "STUCK" > status
                 error_msg=$(tail -5 AUTOSHIP_RUNNER.log 2>/dev/null || echo "fallback worker run failed")
                 autoship_capture_failure model_failure "$issue_id" "error_summary=$error_msg"
+                bash "$SCRIPT_DIR/metrics-collector.sh" record-failure "$issue_id" "$fallback_model" >/dev/null 2>&1 || true
               fi
             else
               echo "STUCK" > status
@@ -353,12 +371,14 @@ for dir in "$WORKSPACES_DIR"/*/; do
             echo "STUCK" > status
             error_msg=$(tail -5 AUTOSHIP_RUNNER.log 2>/dev/null || echo "worker run failed")
             autoship_capture_failure model_failure "$issue_id" "error_summary=$error_msg"
+            bash "$SCRIPT_DIR/metrics-collector.sh" record-failure "$issue_id" "$model" >/dev/null 2>&1 || true
           fi
         fi
       else
         echo "opencode CLI not found" > AUTOSHIP_RUNNER.log
         echo "STUCK" > status
         autoship_capture_failure model_failure "$issue_id" "error_summary=opencode CLI not found"
+        bash "$SCRIPT_DIR/metrics-collector.sh" record-failure "$issue_id" "$model" >/dev/null 2>&1 || true
       fi
     ) &
     printf '%s\n' "$!" > "$dir/worker.pid"
