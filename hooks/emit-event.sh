@@ -16,6 +16,11 @@
 set -euo pipefail
 
 EVENT="${1:?usage: emit-event.sh '<json-event-string>'}"
+# Validate EVENT is valid JSON before passing to jq
+if ! printf '%s\n' "$EVENT" | jq -e . >/dev/null 2>&1; then
+  echo "Error: EVENT is not valid JSON" >&2
+  exit 1
+fi
 REPO_ROOT="${AUTOSHIP_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo ".")}"
 REPO_ROOT=$(cd "$REPO_ROOT" && pwd -P)
 AUTOSHIP_DIR="$REPO_ROOT/.autoship"
@@ -28,7 +33,6 @@ if [[ -L "$AUTOSHIP_DIR" || -L "$QUEUE" || -L "$LOCK" ]]; then
   exit 1
 fi
 
-# Ensure queue exists as a valid JSON array
 if [[ ! -f "$QUEUE" ]] || ! jq -e 'type == "array"' "$QUEUE" >/dev/null 2>&1; then
   QUEUE_TMP=$(mktemp "${QUEUE}.tmp.XXXXXX")
   printf '[]\n' > "$QUEUE_TMP"

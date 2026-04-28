@@ -1,20 +1,74 @@
 #!/usr/bin/env bash
+# Dependency graph: lib/common.sh (optional), lib/state-lib.sh (optional), select-model.sh, update-state.sh, capture-failure.sh
+# Leaf callers: update-state.sh, capture-failure.sh
 set -euo pipefail
 
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
-  echo "Error: not inside a git repository" >&2
-  exit 1
-}
-cd "$REPO_ROOT"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-source "$SCRIPT_DIR/runtime-config.sh"
+
+# Load shared utilities if available; inline fallback for standalone/test use.
+if [[ -f "$SCRIPT_DIR/lib/common.sh" ]]; then
+  source "$SCRIPT_DIR/lib/common.sh"
+else
+  autoship_repo_root() {
+    git rev-parse --show-toplevel 2>/dev/null || {
+      echo "Error: not inside a git repository" >&2
+      return 1
+    }
+  }
+  autoship_config_value() {
+    local key="$1" default="$2"
+    local value="" repo_root state_file config_file
+    repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+    state_file="$repo_root/.autoship/state.json"
+    config_file="$repo_root/.autoship/config.json"
+    if [[ -f "$state_file" ]]; then
+      value=$(jq -r --arg key "$key" '.config[$key] // empty' "$state_file" 2>/dev/null || true)
+    fi
+    if [[ -z "$value" && -f "$config_file" ]]; then
+      value=$(jq -r --arg key "$key" '.[$key] // empty' "$config_file" 2>/dev/null || true)
+    fi
+    printf '%s\n' "${value:-$default}"
+  }
+  autoship_running_count() {
+    local ws_dir="$(git rev-parse --show-toplevel 2>/dev/null || true)/.autoship/workspaces"
+    if [[ -d "$ws_dir" ]]; then
+      grep -Rsl '^RUNNING$' "$ws_dir"/*/status 2>/dev/null | wc -l | tr -d ' '
+    else
+      printf '0\n'
+    fi
+  }
+  autoship_state_set() {
+    local action="$1" issue_key="$2"
+    shift 2
+    local repo_root
+    repo_root="$(autoship_repo_root)"
+    bash "$repo_root/hooks/update-state.sh" "$action" "$issue_key" "$@" 2>/dev/null || true
+  }
+  autoship_capture_failure() {
+    local category="$1" issue_id="$2"
+    shift 2
+    local repo_root
+    repo_root="$(autoship_repo_root)"
+    bash "$repo_root/hooks/capture-failure.sh" "$category" "$issue_id" "$@" 2>/dev/null || true
+  }
+fi
+
+REPO_ROOT=$(autoship_repo_root) || exit 1
+cd "$REPO_ROOT"
 
 AUTOSHIP_DIR=".autoship"
 STATE_FILE="$AUTOSHIP_DIR/state.json"
 WORKSPACES_DIR="$AUTOSHIP_DIR/workspaces"
-MAX=$(autoship_max_agents "$STATE_FILE" "$AUTOSHIP_DIR")
+MAX=$(jq -r '.config.maxConcurrentAgents // .max_concurrent_agents // empty' "$STATE_FILE" 2>/dev/null || true)
+if [[ -z "$MAX" && -f "$AUTOSHIP_DIR/config.json" ]]; then
+  MAX=$(jq -r '.maxConcurrentAgents // .max_agents // empty' "$AUTOSHIP_DIR/config.json" 2>/dev/null || true)
+fi
+MAX="${MAX:-15}"
+# Validate MAX is numeric
+if [[ ! "$MAX" =~ ^[0-9]+$ ]]; then
+  MAX=15
+fi
 DRY_RUN="${AUTOSHIP_RUNNER_DRY_RUN:-false}"
-CHECKPOINT_EVERY="${AUTOSHIP_CHECKPOINT_EVERY:-0}"
 
 active_count() {
   local count=0
@@ -84,7 +138,7 @@ EOF
 }
 
 base_ref_for_workspace() {
-  for ref in origin/master origin/main HEAD~1 master main; do
+  for ref in origin/master origin/main master main HEAD~1; do
     if git rev-parse --verify "$ref" >/dev/null 2>&1; then
       printf '%s\n' "$ref"
       return 0
@@ -98,33 +152,12 @@ auto_commit_workspace_changes() {
   if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     return 0
   fi
-  local git_root current_dir
-  git_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
-  current_dir=$(pwd -P)
-  if [[ -n "$git_root" ]]; then
-    git_root=$(cd "$git_root" && pwd -P)
-  fi
-  if [[ -z "$git_root" || "$git_root" != "$current_dir" ]]; then
-    return 0
-  fi
 
   if git diff --quiet && git diff --cached --quiet && [[ -z "$(git ls-files --others --exclude-standard)" ]]; then
     return 0
   fi
 
-  git status --porcelain | while IFS= read -r line; do
-    local path
-    path="${line#???}"
-    case "$line" in
-      R*|C*) path="${path#* -> }" ;;
-    esac
-    case "$path" in
-      .autoship|.autoship/*|AUTOSHIP_PROMPT.md|AUTOSHIP_RESULT.md|AUTOSHIP_RUNNER.log|AUTOSHIP_VERIFICATION.log|BLOCKED_REASON.txt|model|role|routing-log.txt|started_at|status|worker.pid|checkpoint_at|shasum.before|shasum.after|acceptance-criteria.json)
-        continue
-        ;;
-    esac
-    git add -- "$path"
-  done
+  git add -A
   if git diff --cached --quiet; then
     return 0
   fi
@@ -132,7 +165,7 @@ auto_commit_workspace_changes() {
   git \
     -c user.name="AutoShip" \
     -c user.email="autoship@local" \
-    commit -m "autoship: ${issue_key} auto-commit" >> AUTOSHIP_RUNNER.log 2>&1 || true
+    commit -m "autoship: ${issue_key} auto-commit" >> AUTOSHIP_RUNNER.log 2>&1
 }
 
 has_non_runtime_changes() {
@@ -162,9 +195,7 @@ salvage_truncated_worker() {
     } > AUTOSHIP_RESULT.md
   fi
   echo "COMPLETE" > status
-  if [[ -x "$repo_root/hooks/capture-failure.sh" ]]; then
-    bash "$repo_root/hooks/capture-failure.sh" salvaged_truncation "$issue_key" "error_summary=worker exited without terminal status but non-runtime changes were committed" 2>/dev/null || true
-  fi
+  autoship_capture_failure salvaged_truncation "$issue_key" "error_summary=worker exited without terminal status but non-runtime changes were committed"
   return 0
 }
 
@@ -183,7 +214,7 @@ production_additions_count() {
     if ! is_test_path "$file"; then
       count=$((count + 1))
     fi
-  done < <(git diff --name-only "$base_ref"...HEAD 2>/dev/null || git diff --name-only "$base_ref" HEAD 2>/dev/null || true)
+  done < <(git diff --name-only "$base_ref"...HEAD 2>/dev/null || git diff --name-only "$base_ref" HEAD 2>/dev/null)
   printf '%s\n' "$count"
 }
 
@@ -205,9 +236,7 @@ reject_tests_only_complete() {
   if [[ "$prod_changes" == "0" ]]; then
     printf '%s\n' "REJECT: tests-only diff" >> AUTOSHIP_RUNNER.log
     printf 'STUCK\n' > status
-    if [[ -x "$repo_root/hooks/capture-failure.sh" ]]; then
-      bash "$repo_root/hooks/capture-failure.sh" tests_only "$issue_key" "error_summary=worker reported COMPLETE with tests-only diff" 2>/dev/null || true
-    fi
+    autoship_capture_failure tests_only "$issue_key" "error_summary=worker reported COMPLETE with tests-only diff"
   fi
 }
 
@@ -256,10 +285,8 @@ mark_stuck_unless_terminal() {
   case "$current" in
     COMPLETE|BLOCKED|STUCK) ;;
     *)
-      if [[ -x "$repo_root/hooks/capture-failure.sh" ]]; then
-        error_msg=$(tail -5 AUTOSHIP_RUNNER.log 2>/dev/null || echo "worker exited without terminal status")
-        bash "$repo_root/hooks/capture-failure.sh" stuck "$wid" "error_summary=$error_msg" 2>/dev/null || true
-      fi
+  error_msg=$(tail -5 AUTOSHIP_RUNNER.log 2>/dev/null || echo "worker exited without terminal status")
+  autoship_capture_failure stuck "$wid" "error_summary=$error_msg"
       echo "STUCK" > status
       ;;
   esac
@@ -287,14 +314,8 @@ for dir in "$WORKSPACES_DIR"/*/; do
   [[ -f "$model_file" ]] && model=$(cat "$model_file")
   [[ -f "$role_file" ]] && role=$(cat "$role_file")
   issue_id="$(basename "$dir")"
-  if [[ -x "$REPO_ROOT/hooks/opencode/quota-guard.sh" || -f "$REPO_ROOT/hooks/opencode/quota-guard.sh" ]]; then
-    bash "$REPO_ROOT/hooks/opencode/quota-guard.sh" >/dev/null 2>&1 || { echo "Quota guard paused dispatch"; break; }
-  fi
   echo "RUNNING" > "$status_file"
-  bash "$REPO_ROOT/hooks/update-state.sh" set-running "$(basename "$dir")" agent="$model" model="$model" role="$role" 2>/dev/null || true
-  if [[ "$CHECKPOINT_EVERY" != "0" ]]; then
-    date -u +%Y-%m-%dT%H:%M:%SZ > "$dir/checkpoint_at" 2>/dev/null || true
-  fi
+  autoship_state_set set-running "$(basename "$dir")" agent="$model" model="$model" role="$role"
 
   if [[ "$DRY_RUN" == "true" ]]; then
     echo "DRY_RUN start $(basename "$dir") with $model"
@@ -312,40 +333,32 @@ for dir in "$WORKSPACES_DIR"/*/; do
             fallback_model=$(select_free_fallback_model "$model" || true)
             if [[ -n "$fallback_model" ]]; then
               printf '%s\n' "$fallback_model" > model
-              bash "$REPO_ROOT/hooks/update-state.sh" set-running "$issue_id" agent="$fallback_model" model="$fallback_model" role="$role" 2>/dev/null || true
+              autoship_state_set set-running "$issue_id" agent="$fallback_model" model="$fallback_model" role="$role"
               if run_worker "$fallback_model" >> AUTOSHIP_RUNNER.log 2>&1; then
                 auto_commit_workspace_changes "$issue_id"
                 reject_tests_only_complete "$issue_id" "$REPO_ROOT"
                 salvage_truncated_worker "$issue_id" "$REPO_ROOT" || mark_stuck_unless_terminal "$issue_id" "$REPO_ROOT"
               else
                 echo "STUCK" > status
-                if [[ -x "$REPO_ROOT/hooks/capture-failure.sh" ]]; then
-                  error_msg=$(tail -5 AUTOSHIP_RUNNER.log 2>/dev/null || echo "fallback worker run failed")
-                  bash "$REPO_ROOT/hooks/capture-failure.sh" model_failure "$issue_id" "error_summary=$error_msg" 2>/dev/null || true
-                fi
+                error_msg=$(tail -5 AUTOSHIP_RUNNER.log 2>/dev/null || echo "fallback worker run failed")
+                autoship_capture_failure model_failure "$issue_id" "error_summary=$error_msg"
               fi
             else
               echo "STUCK" > status
-              if [[ -x "$REPO_ROOT/hooks/capture-failure.sh" ]]; then
-                error_msg=$(tail -5 AUTOSHIP_RUNNER.log 2>/dev/null || echo "worker run failed")
-                bash "$REPO_ROOT/hooks/capture-failure.sh" model_failure "$issue_id" "error_summary=$error_msg" 2>/dev/null || true
-              fi
+              error_msg=$(tail -5 AUTOSHIP_RUNNER.log 2>/dev/null || echo "worker run failed")
+              autoship_capture_failure model_failure "$issue_id" "error_summary=$error_msg"
             fi
           else
             annotate_session_failure AUTOSHIP_RUNNER.log || true
             echo "STUCK" > status
-            if [[ -x "$REPO_ROOT/hooks/capture-failure.sh" ]]; then
-              error_msg=$(tail -5 AUTOSHIP_RUNNER.log 2>/dev/null || echo "worker run failed")
-              bash "$REPO_ROOT/hooks/capture-failure.sh" model_failure "$issue_id" "error_summary=$error_msg" 2>/dev/null || true
-            fi
+            error_msg=$(tail -5 AUTOSHIP_RUNNER.log 2>/dev/null || echo "worker run failed")
+            autoship_capture_failure model_failure "$issue_id" "error_summary=$error_msg"
           fi
         fi
       else
         echo "opencode CLI not found" > AUTOSHIP_RUNNER.log
         echo "STUCK" > status
-        if [[ -x "$REPO_ROOT/hooks/capture-failure.sh" ]]; then
-          bash "$REPO_ROOT/hooks/capture-failure.sh" model_failure "$issue_id" "error_summary=opencode CLI not found" 2>/dev/null || true
-        fi
+        autoship_capture_failure model_failure "$issue_id" "error_summary=opencode CLI not found"
       fi
     ) &
     printf '%s\n' "$!" > "$dir/worker.pid"

@@ -16,7 +16,7 @@ ensure_init() {
 }
 
 cmd="${1:-check}"
-shift || true
+shift
 
 case "$cmd" in
   init|refresh)

@@ -8,18 +8,12 @@ CONFIG_FILE="$AUTOSHIP_DIR/config.json"
 MAX_AGENTS="${AUTOSHIP_MAX_AGENTS:-15}"
 SELECTED_MODELS="${AUTOSHIP_MODELS:-}"
 REFRESH_MODELS="${AUTOSHIP_REFRESH_MODELS:-0}"
-PLANNER_MODEL="${AUTOSHIP_PLANNER_MODEL:-}"
-COORDINATOR_MODEL="${AUTOSHIP_COORDINATOR_MODEL:-}"
-ORCHESTRATOR_MODEL="${AUTOSHIP_ORCHESTRATOR_MODEL:-}"
-REVIEWER_MODEL="${AUTOSHIP_REVIEWER_MODEL:-}"
-LEAD_MODEL="${AUTOSHIP_LEAD_MODEL:-}"
+PLANNER_MODEL="${AUTOSHIP_PLANNER_MODEL:-openai/gpt-5.5}"
+COORDINATOR_MODEL="${AUTOSHIP_COORDINATOR_MODEL:-$PLANNER_MODEL}"
+ORCHESTRATOR_MODEL="${AUTOSHIP_ORCHESTRATOR_MODEL:-$PLANNER_MODEL}"
+REVIEWER_MODEL="${AUTOSHIP_REVIEWER_MODEL:-$PLANNER_MODEL}"
+LEAD_MODEL="${AUTOSHIP_LEAD_MODEL:-$PLANNER_MODEL}"
 LABELS="${AUTOSHIP_LABELS:-agent:ready}"
-CARGO_CONCURRENCY_CAP="${AUTOSHIP_CARGO_CONCURRENCY_CAP:-8}"
-CARGO_TARGET_ISOLATION_THRESHOLD="${AUTOSHIP_CARGO_TARGET_ISOLATION_THRESHOLD:-8}"
-CARGO_TIMEOUT_SECONDS="${AUTOSHIP_CARGO_TIMEOUT_SECONDS:-120}"
-MERGE_STRATEGY="${AUTOSHIP_MERGE_STRATEGY:-safe}"
-POLICY_PROFILE="${AUTOSHIP_POLICY_PROFILE:-default}"
-QUOTA_ROUTING="${AUTOSHIP_QUOTA_ROUTING:-true}"
 
 NO_TUI=0
 POSITIONAL=()
@@ -37,16 +31,9 @@ OPTIONS:
   --max-agents N        Set max concurrent agents (default: 15)
   --labels LABEL,...   Comma-separated labels to monitor (default: agent:ready)
   --refresh-models     Force refresh model inventory from OpenCode
-  --planner-model MODEL Set planner/coordinator/orchestrator/reviewer/lead model (default: best available role model)
-  --orchestrator-model MODEL Set orchestrator model separately (default: planner model)
-  --reviewer-model MODEL Set reviewer model separately (default: planner model)
+  --planner-model MODEL Set planner/coordinator/orchestrator/reviewer/lead model (default: openai/gpt-5.5)
   --lead-model MODEL   Set lead model separately (default: same as planner)
   --worker-models MODELS Comma-separated worker models (default: auto-detect free)
-  --cargo-concurrency-cap N       Max Rust workers without cargo target isolation (default: 8)
-  --cargo-target-isolation-threshold N  Isolate CARGO_TARGET_DIR above this max-agent count (default: 8)
-  --cargo-timeout-seconds N       Cargo verification timeout guidance for workers (default: 120)
-  --merge-strategy STRATEGY       safe or high_throughput (default: safe)
-  --policy-profile PROFILE        Policy profile name (default: default)
   -h, --help           Show this help message
 
 EXAMPLES:
@@ -63,9 +50,7 @@ ENVIRONMENT VARIABLES:
   AUTOSHIP_MAX_AGENTS       Max concurrent agents
   AUTOSHIP_MODELS          Comma-separated worker models
   AUTOSHIP_REFRESH_MODELS  Set to 1 to force refresh
-  AUTOSHIP_PLANNER_MODEL   Planner model (default: best available role model)
-  AUTOSHIP_ORCHESTRATOR_MODEL Orchestrator model (default: planner model)
-  AUTOSHIP_REVIEWER_MODEL  Reviewer model (default: planner model)
+  AUTOSHIP_PLANNER_MODEL   Planner model (default: openai/gpt-5.5)
   AUTOSHIP_LEAD_MODEL    Lead model (default: same as planner)
   AUTOSHIP_LABELS          Comma-separated labels (default: agent:ready)
   GH_TOKEN                 GitHub token (for gh auth)
@@ -124,24 +109,6 @@ parse_args() {
         LEAD_MODEL="$2"
         shift 2
         ;;
-      --orchestrator-model)
-        [[ $# -ge 2 ]] || { echo "Error: --orchestrator-model requires a value" >&2; usage 2; }
-        ORCHESTRATOR_MODEL="$2"
-        shift 2
-        ;;
-      --orchestrator-model=*)
-        ORCHESTRATOR_MODEL="${1#*=}"
-        shift
-        ;;
-      --reviewer-model)
-        [[ $# -ge 2 ]] || { echo "Error: --reviewer-model requires a value" >&2; usage 2; }
-        REVIEWER_MODEL="$2"
-        shift 2
-        ;;
-      --reviewer-model=*)
-        REVIEWER_MODEL="${1#*=}"
-        shift
-        ;;
       --lead-model=*)
         LEAD_MODEL="${1#*=}"
         shift
@@ -155,26 +122,6 @@ parse_args() {
         SELECTED_MODELS="${1#*=}"
         shift
         ;;
-      --cargo-concurrency-cap)
-        [[ $# -ge 2 ]] || { echo "Error: --cargo-concurrency-cap requires a value" >&2; usage 2; }
-        CARGO_CONCURRENCY_CAP="$2"; shift 2 ;;
-      --cargo-concurrency-cap=*) CARGO_CONCURRENCY_CAP="${1#*=}"; shift ;;
-      --cargo-target-isolation-threshold)
-        [[ $# -ge 2 ]] || { echo "Error: --cargo-target-isolation-threshold requires a value" >&2; usage 2; }
-        CARGO_TARGET_ISOLATION_THRESHOLD="$2"; shift 2 ;;
-      --cargo-target-isolation-threshold=*) CARGO_TARGET_ISOLATION_THRESHOLD="${1#*=}"; shift ;;
-      --cargo-timeout-seconds)
-        [[ $# -ge 2 ]] || { echo "Error: --cargo-timeout-seconds requires a value" >&2; usage 2; }
-        CARGO_TIMEOUT_SECONDS="$2"; shift 2 ;;
-      --cargo-timeout-seconds=*) CARGO_TIMEOUT_SECONDS="${1#*=}"; shift ;;
-      --merge-strategy)
-        [[ $# -ge 2 ]] || { echo "Error: --merge-strategy requires a value" >&2; usage 2; }
-        MERGE_STRATEGY="$2"; shift 2 ;;
-      --merge-strategy=*) MERGE_STRATEGY="${1#*=}"; shift ;;
-      --policy-profile)
-        [[ $# -ge 2 ]] || { echo "Error: --policy-profile requires a value" >&2; usage 2; }
-        POLICY_PROFILE="$2"; shift 2 ;;
-      --policy-profile=*) POLICY_PROFILE="${1#*=}"; shift ;;
       -h|--help)
         usage 0
         ;;
@@ -187,29 +134,14 @@ parse_args() {
         usage 2
         ;;
       *)
-        POSITIONAL+=("$1")
-        shift
+        echo "Error: Unexpected argument: $1" >&2
+        usage 2
         ;;
     esac
-  done
-
-  while [[ $# -gt 0 ]]; do
-    POSITIONAL+=("$1")
-    shift
   done
 }
 
 parse_args "$@"
-
-if [[ ${#POSITIONAL[@]} -gt 0 ]]; then
-  echo "Error: Unexpected positional arguments: ${POSITIONAL[*]}" >&2
-  usage 2
-fi
-
-case "$MERGE_STRATEGY" in
-  safe|high_throughput) ;;
-  *) echo "Error: --merge-strategy must be safe or high_throughput" >&2; exit 2 ;;
-esac
 
 if [[ "$NO_TUI" -eq 0 && -t 0 ]]; then
   echo "Running in interactive mode. Use --no-tui for non-interactive."
@@ -221,11 +153,11 @@ if [[ "$REFRESH_MODELS" == "1" ]]; then
   rm -f "$ROUTING_FILE" "$CONFIG_FILE"
 fi
 
-if [[ -f "$ROUTING_FILE" && -z "$SELECTED_MODELS" && -z "$PLANNER_MODEL$COORDINATOR_MODEL$ORCHESTRATOR_MODEL$REVIEWER_MODEL$LEAD_MODEL" && "$REFRESH_MODELS" != "1" ]]; then
+if [[ -f "$ROUTING_FILE" && -z "$SELECTED_MODELS" && "$REFRESH_MODELS" != "1" ]]; then
   if jq -e '(.models // []) | length > 0' "$ROUTING_FILE" >/dev/null 2>&1; then
     if [[ ! -f "$CONFIG_FILE" ]]; then
-      jq -n --argjson max "$MAX_AGENTS" --arg labels "$LABELS" --argjson cargoCap "$CARGO_CONCURRENCY_CAP" --argjson cargoThreshold "$CARGO_TARGET_ISOLATION_THRESHOLD" --argjson cargoTimeout "$CARGO_TIMEOUT_SECONDS" --arg mergeStrategy "$MERGE_STRATEGY" --arg policyProfile "$POLICY_PROFILE" --arg quotaRouting "$QUOTA_ROUTING" \
-        '{runtime: "opencode", maxConcurrentAgents: $max, max_agents: $max, models: [], labels: ($labels | split(",")), refreshModels: false, cargoConcurrencyCap: $cargoCap, cargoTargetIsolationThreshold: $cargoThreshold, cargoTimeoutSeconds: $cargoTimeout, mergeStrategy: $mergeStrategy, policyProfile: $policyProfile, quotaRouting: ($quotaRouting == "true")}' > "$CONFIG_FILE"
+      jq -n --argjson max "$MAX_AGENTS" --arg labels "$LABELS" \
+        '{runtime: "opencode", maxConcurrentAgents: $max, max_agents: $max, models: [], labels: ($labels | split(",")), refreshModels: false}' > "$CONFIG_FILE"
     fi
     echo "AutoShip OpenCode setup already configured"
     echo "Model routing preserved: $ROUTING_FILE"
@@ -235,20 +167,8 @@ if [[ -f "$ROUTING_FILE" && -z "$SELECTED_MODELS" && -z "$PLANNER_MODEL$COORDINA
 fi
 
 if ! gh auth status >/dev/null 2>&1; then
-  echo "Warning: GitHub authentication not detected. Run 'gh auth login' before dispatch." >&2
-fi
-
-if [[ -f "$ROUTING_FILE" && -z "$SELECTED_MODELS" && -z "$PLANNER_MODEL$COORDINATOR_MODEL$ORCHESTRATOR_MODEL$REVIEWER_MODEL$LEAD_MODEL" && "$REFRESH_MODELS" != "1" ]]; then
-  if jq -e '(.models // []) | length > 0' "$ROUTING_FILE" >/dev/null 2>&1; then
-    if [[ ! -f "$CONFIG_FILE" ]]; then
-      jq -n --argjson max "$MAX_AGENTS" --argjson cargoCap "$CARGO_CONCURRENCY_CAP" --argjson cargoThreshold "$CARGO_TARGET_ISOLATION_THRESHOLD" --argjson cargoTimeout "$CARGO_TIMEOUT_SECONDS" --arg mergeStrategy "$MERGE_STRATEGY" --arg policyProfile "$POLICY_PROFILE" --arg quotaRouting "$QUOTA_ROUTING" \
-        '{runtime: "opencode", maxConcurrentAgents: $max, max_agents: $max, models: [], cargoConcurrencyCap: $cargoCap, cargoTargetIsolationThreshold: $cargoThreshold, cargoTimeoutSeconds: $cargoTimeout, mergeStrategy: $mergeStrategy, policyProfile: $policyProfile, quotaRouting: ($quotaRouting == "true")}' > "$CONFIG_FILE"
-    fi
-    echo "AutoShip OpenCode setup already configured"
-    echo "Model routing preserved: $ROUTING_FILE"
-    echo "Set AUTOSHIP_REFRESH_MODELS=1 to regenerate from current opencode models."
-    exit 0
-  fi
+  echo "Error: GitHub authentication required. Run 'gh auth login' or set GH_TOKEN." >&2
+  exit 1
 fi
 
 if ! command -v opencode >/dev/null 2>&1; then
@@ -268,46 +188,14 @@ if [[ -z "$available_model_ids" ]]; then
   exit 1
 fi
 
-DEFAULT_ROLE_MODEL=$(default_role_model "$available_model_ids")
-PLANNER_MODEL="${PLANNER_MODEL:-$DEFAULT_ROLE_MODEL}"
-COORDINATOR_MODEL="${COORDINATOR_MODEL:-$PLANNER_MODEL}"
-ORCHESTRATOR_MODEL="${ORCHESTRATOR_MODEL:-$PLANNER_MODEL}"
-REVIEWER_MODEL="${REVIEWER_MODEL:-$PLANNER_MODEL}"
-LEAD_MODEL="${LEAD_MODEL:-$PLANNER_MODEL}"
-
-choose_role_model() {
-  local role_name="$1"
-  local current_model="$2"
-  local selected=""
-  echo "" >&2
-  echo "Available OpenCode models for $role_name:" >&2
-  printf '%s\n' "$available_model_ids" | nl -w1 -s'. ' >&2
-  printf 'Choose %s model [%s]: ' "$role_name" "$current_model" >&2
-  IFS= read -r selected || selected=""
-  selected="${selected#${selected%%[![:space:]]*}}"
-  selected="${selected%${selected##*[![:space:]]}}"
-  if [[ -z "$selected" ]]; then
-    printf '%s\n' "$current_model"
-  elif [[ "$selected" =~ ^[0-9]+$ ]]; then
-    printf '%s\n' "$available_model_ids" | sed -n "${selected}p"
-  else
-    printf '%s\n' "$selected"
-  fi
-}
-
-if [[ "$NO_TUI" -eq 0 && ! -f "$ROUTING_FILE" ]]; then
-  ORCHESTRATOR_MODEL=$(choose_role_model "orchestrator" "$ORCHESTRATOR_MODEL")
-  REVIEWER_MODEL=$(choose_role_model "reviewer" "$REVIEWER_MODEL")
+if [[ -z "$SELECTED_MODELS" ]]; then
+  SELECTED_MODELS=$(default_free_models "$available_model_ids")
 fi
 
-if [[ -z "$SELECTED_MODELS" ]]; then
-  SELECTED_MODELS=$(default_worker_models "$available_model_ids")
-fi
-
-reject_forbidden_models "$SELECTED_MODELS,$PLANNER_MODEL,$COORDINATOR_MODEL,$ORCHESTRATOR_MODEL,$REVIEWER_MODEL,$LEAD_MODEL"
+reject_forbidden_models "$SELECTED_MODELS,$PLANNER_MODEL,$COORDINATOR_MODEL,$ORCHESTRATOR_MODEL,$REVIEWER_MODEL"
 
 if [[ -z "$SELECTED_MODELS" ]]; then
-  echo "Error: no free or OpenCode Go models found. Set AUTOSHIP_MODELS to choose models explicitly." >&2
+  echo "Error: no free OpenCode models found. Set AUTOSHIP_MODELS to choose models explicitly." >&2
   exit 1
 fi
 
@@ -325,12 +213,12 @@ if [[ -n "$missing_role_models" ]]; then
   exit 1
 fi
 
-python3 - "$ROUTING_FILE" "$CONFIG_FILE" "$SELECTED_MODELS" "$MAX_AGENTS" "$PLANNER_MODEL" "$COORDINATOR_MODEL" "$ORCHESTRATOR_MODEL" "$REVIEWER_MODEL" "$LEAD_MODEL" "$LABELS" "$CARGO_CONCURRENCY_CAP" "$CARGO_TARGET_ISOLATION_THRESHOLD" "$CARGO_TIMEOUT_SECONDS" "$MERGE_STRATEGY" "$POLICY_PROFILE" "$QUOTA_ROUTING" <<'PY'
+python3 - "$ROUTING_FILE" "$CONFIG_FILE" "$SELECTED_MODELS" "$MAX_AGENTS" "$PLANNER_MODEL" "$COORDINATOR_MODEL" "$ORCHESTRATOR_MODEL" "$REVIEWER_MODEL" "$LEAD_MODEL" "$LABELS" <<'PY'
 import json
 import sys
 import os
 
-routing_path, config_path, selected_models, max_agents, planner_model, coordinator_model, orchestrator_model, reviewer_model, lead_model, labels, cargo_cap, cargo_target_threshold, cargo_timeout, merge_strategy, policy_profile, quota_routing = sys.argv[1:]
+routing_path, config_path, selected_models, max_agents, planner_model, coordinator_model, orchestrator_model, reviewer_model, lead_model, labels = sys.argv[1:]
 models = [m.strip() for m in selected_models.split(",") if m.strip()]
 labels_list = [l.strip() for l in labels.split(",") if l.strip()]
 
@@ -370,16 +258,9 @@ def task_types(model: str) -> list[str]:
 
 entries = []
 for model in models:
-    lower = model.lower()
-    if ":free" in lower or "free" in lower or model in ["opencode/big-pickle", "opencode/gpt-5-nano"]:
-        cost = "free"
-    elif lower.startswith("opencode-go/"):
-        cost = "go"
-    else:
-        cost = "selected"
     entries.append({
         "id": model,
-        "cost": cost,
+        "cost": "free" if (":free" in model.lower() or "free" in model.lower()) else "selected",
         "strength": strength(model),
         "max_task_types": task_types(model),
     })
@@ -434,20 +315,10 @@ with open(config_path, "w", encoding="utf-8") as f:
         "leadModel": lead_model,
         "models": models,
         "labels": labels_list,
-        "cargoConcurrencyCap": int(cargo_cap),
-        "cargoTargetIsolationThreshold": int(cargo_target_threshold),
-        "cargoTimeoutSeconds": int(cargo_timeout),
-        "mergeStrategy": merge_strategy,
-        "policyProfile": policy_profile,
-        "quotaRouting": quota_routing.lower() == "true",
         "refreshModels": int(os.environ.get("AUTOSHIP_REFRESH_MODELS", "0")) == 1,
     }, f, indent=2)
     f.write("\n")
 PY
-
-if [[ -x "$SCRIPT_DIR/validate-project.sh" ]]; then
-  bash "$SCRIPT_DIR/validate-project.sh" > "$AUTOSHIP_DIR/project-commands.json" 2>/dev/null || true
-fi
 
 date -u +%Y-%m-%dT%H:%M:%SZ > "$AUTOSHIP_DIR/.onboarded"
 echo "AutoShip OpenCode setup complete"

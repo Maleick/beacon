@@ -1,7 +1,27 @@
 #!/usr/bin/env bash
+# Dependency graph: lib/common.sh (optional), update-state.sh
+# Leaf callers: update-state.sh
 set -euo pipefail
 
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Load shared utilities if available; inline fallback for standalone/test use.
+if [[ -f "$SCRIPT_DIR/lib/common.sh" ]]; then
+  source "$SCRIPT_DIR/lib/common.sh"
+else
+  autoship_repo_root() {
+    git rev-parse --show-toplevel 2>/dev/null || pwd
+  }
+  autoship_state_set() {
+    local action="$1" issue_key="$2"
+    shift 2
+    local repo_root
+    repo_root="$(autoship_repo_root)"
+    bash "$repo_root/hooks/update-state.sh" "$action" "$issue_key" "$@" 2>/dev/null || true
+  }
+fi
+
+REPO_ROOT="$(autoship_repo_root)"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -53,7 +73,7 @@ for dir in "$WORKSPACES_DIR"/*/; do
   current_state=$(jq -r --arg key "$key" '.issues[$key].state // empty' "$tmp" 2>/dev/null || true)
   increment_stats=true
   if [[ "$current_state" != "$new_state" && -x "$REPO_ROOT/hooks/update-state.sh" && -d "$REPO_ROOT/.git" ]]; then
-    if (cd "$REPO_ROOT" && bash hooks/update-state.sh "$action" "$key") >/dev/null 2>&1; then
+    if (cd "$REPO_ROOT" && autoship_state_set "$action" "$key") >/dev/null 2>&1; then
       cp "$STATE_FILE" "$tmp"
       increment_stats=false
     fi

@@ -29,14 +29,12 @@ is_safe_repo_file() {
   echo "## Project Context"
   echo ""
 
-  # 1. Read from .autoship/config.json
   if is_safe_repo_file "$CONFIG_FILE"; then
     echo "### Project Configuration"
     jq -r 'to_entries | map("- **\(.key)**: \(.value)") | .[]' "$CONFIG_FILE" 2>/dev/null | head -10 || true
     echo ""
   fi
 
-  # 2. Extract from CLAUDE.md - only critical sections, strict line limit
   if is_safe_repo_file "CLAUDE.md"; then
     echo "### Key Conventions"
     # Extract ONLY lines under Patterns, Conventions, or Gotchas headings
@@ -67,7 +65,6 @@ is_safe_repo_file() {
     echo ""
   fi
 
-  # 3. Read AGENTS.md if present - keep SHORT for worker context
   if is_safe_repo_file "AGENTS.md"; then
     echo "### Agent Constraints"
     head -15 "AGENTS.md"

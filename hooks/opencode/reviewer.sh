@@ -1,12 +1,28 @@
 #!/usr/bin/env bash
+# Dependency graph: lib/common.sh (optional), select-model.sh, capture-failure.sh
+# Leaf callers: capture-failure.sh
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Load shared utilities if available; inline fallback for standalone/test use.
+if [[ -f "$SCRIPT_DIR/lib/common.sh" ]]; then
+  source "$SCRIPT_DIR/lib/common.sh"
+else
+  autoship_capture_failure() {
+    local category="$1" issue_id="$2"
+    shift 2
+    local repo_root
+    repo_root="$(cd "$SCRIPT_DIR/../.." && pwd)"
+    bash "$repo_root/hooks/capture-failure.sh" "$category" "$issue_id" "$@" 2>/dev/null || true
+  }
+fi
 
 ISSUE_KEY="${1:?Issue key required}"
 WORKTREE_PATH="${2:?Worktree path required}"
 RESULT_PATH="${3:-$WORKTREE_PATH/AUTOSHIP_RESULT.md}"
 TEST_COMMAND="${4:-none}"
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MODEL=$(bash "$SCRIPT_DIR/select-model.sh" --role reviewer)
 [[ -n "$MODEL" ]] || MODEL="openai/gpt-5.5"
 
@@ -72,13 +88,10 @@ else
   error_summary="reviewer returned FAIL verdict"
 fi
 
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-if [[ -x "$REPO_ROOT/hooks/capture-failure.sh" ]]; then
-  tmp_log=$(mktemp)
-  printf '%s\n' "$reviewer_output" > "$tmp_log"
-  AUTOSHIP_FAILURE_LOG="$tmp_log" bash "$REPO_ROOT/hooks/capture-failure.sh" reviewer_rejection "$ISSUE_KEY" "error_summary=$error_summary" 2>/dev/null || true
-  rm -f "$tmp_log"
-fi
+tmp_log=$(mktemp)
+printf '%s\n' "$reviewer_output" > "$tmp_log"
+AUTOSHIP_FAILURE_LOG="$tmp_log" autoship_capture_failure reviewer_rejection "$ISSUE_KEY" "error_summary=$error_summary"
+rm -f "$tmp_log"
 
 echo "VERDICT: FAIL — $error_summary"
 exit 1

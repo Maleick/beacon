@@ -1,8 +1,29 @@
 #!/usr/bin/env bash
+# Dependency graph: lib/common.sh (optional), select-model.sh, create-worktree.sh, pr-title.sh, update-state.sh
+# Leaf callers: update-state.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-source "$SCRIPT_DIR/runtime-config.sh"
+
+# Load shared utilities if available; inline fallback for standalone/test use.
+if [[ -f "$SCRIPT_DIR/lib/common.sh" ]]; then
+  source "$SCRIPT_DIR/lib/common.sh"
+else
+  autoship_repo_root() {
+    git rev-parse --show-toplevel 2>/dev/null || {
+      echo "Error: not inside a git repository" >&2
+      return 1
+    }
+  }
+  autoship_state_set() {
+    local action="$1" issue_key="$2"
+    shift 2
+    local repo_root
+    repo_root="$(autoship_repo_root)"
+    bash "$repo_root/hooks/update-state.sh" "$action" "$issue_key" "$@"
+  }
+fi
+
 DRY_RUN=false
 POSITIONAL=()
 
@@ -15,13 +36,15 @@ for arg in "$@"; do
 done
 
 ISSUE_NUM="${POSITIONAL[0]:?Issue number required}"
+# Validate issue number is numeric
+if [[ ! "$ISSUE_NUM" =~ ^[0-9]+$ ]]; then
+  echo "Error: issue number must be numeric, got: $ISSUE_NUM" >&2
+  exit 1
+fi
 TASK_TYPE="${POSITIONAL[1]:-medium_code}"
 MODEL_OVERRIDE="${POSITIONAL[2]:-}"
 
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
-  echo "Error: not inside a git repository" >&2
-  exit 1
-}
+REPO_ROOT=$(autoship_repo_root) || exit 1
 cd "$REPO_ROOT"
 
 AUTOSHIP_DIR=".autoship"
@@ -29,7 +52,6 @@ STATE_FILE="$AUTOSHIP_DIR/state.json"
 ROUTING_FILE="$AUTOSHIP_DIR/model-routing.json"
 ISSUE_KEY="issue-${ISSUE_NUM}"
 WORKSPACE_PATH="$AUTOSHIP_DIR/workspaces/$ISSUE_KEY"
-ITEM_RECORD="$SCRIPT_DIR/item-record.sh"
 
 if [[ -f "$STATE_FILE" ]] && jq -e --arg key "$ISSUE_KEY" '(.issues[$key].terminal_failure // false) == true or (.issues[$key].retry_eligible // true) == false' "$STATE_FILE" >/dev/null 2>&1; then
   mkdir -p "$WORKSPACE_PATH"
@@ -40,8 +62,20 @@ if [[ -f "$STATE_FILE" ]] && jq -e --arg key "$ISSUE_KEY" '(.issues[$key].termin
   exit 0
 fi
 
-max_agents=$(autoship_max_agents "$STATE_FILE" "$AUTOSHIP_DIR")
+max_agents=$(jq -r '.config.maxConcurrentAgents // .max_concurrent_agents // empty' "$STATE_FILE" 2>/dev/null || true)
+if [[ -z "$max_agents" && -f "$AUTOSHIP_DIR/config.json" ]]; then
+  max_agents=$(jq -r '.maxConcurrentAgents // .max_agents // empty' "$AUTOSHIP_DIR/config.json" 2>/dev/null || true)
+fi
+max_agents="${max_agents:-15}"
+# Validate max_agents is numeric
+if [[ ! "$max_agents" =~ ^[0-9]+$ ]]; then
+  max_agents=15
+fi
 running=$(jq '[.issues | to_entries[] | select((.value.state // .value.status) == "running")] | length' "$STATE_FILE" 2>/dev/null || echo 0)
+# Validate running is numeric
+if [[ ! "$running" =~ ^[0-9]+$ ]]; then
+  running=0
+fi
 cap_note=""
 if (( running >= max_agents )); then
   cap_note="CAP_REACHED: $running active / $max_agents max; workspace will remain queued"
@@ -50,19 +84,6 @@ fi
 TITLE=$(gh issue view "$ISSUE_NUM" --json title --jq '.title' 2>/dev/null || echo "Issue $ISSUE_NUM")
 BODY=$(gh issue view "$ISSUE_NUM" --json body --jq '.body' 2>/dev/null || echo "")
 LABELS=$(gh issue view "$ISSUE_NUM" --json labels --jq '[.labels[].name] | join(",")' 2>/dev/null || echo "")
-SANITIZED_BODY="$BODY"
-if [[ -x "$SCRIPT_DIR/sanitize-issue.sh" ]]; then
-  SANITIZED_BODY=$(bash "$SCRIPT_DIR/sanitize-issue.sh" sanitize "$ISSUE_NUM" "$BODY" 2>/dev/null || printf '%s' "$BODY")
-fi
-CRITERIA_JSON='{}'
-if [[ -x "$SCRIPT_DIR/extract-criteria.sh" ]]; then
-  CRITERIA_JSON=$(bash "$SCRIPT_DIR/extract-criteria.sh" extract "$BODY" 2>/dev/null || echo '{}')
-fi
-FAILURE_CONTEXT=""
-latest_failure=$(ls -t "$AUTOSHIP_DIR/failures"/*-"$ISSUE_KEY".json 2>/dev/null | head -1 || true)
-if [[ -n "$latest_failure" ]]; then
-  FAILURE_CONTEXT=$(jq -r '"Previous failure: " + (.failure_category // "unknown") + " - " + (.error_summary // "")' "$latest_failure" 2>/dev/null || true)
-fi
 
 resolve_model() {
   local task_type="$1"
@@ -73,9 +94,15 @@ resolve_model() {
     return 0
   fi
   if [[ -f "$ROUTING_FILE" ]]; then
-    ROUTING_LOG=$(bash "$SCRIPT_DIR/select-model.sh" --log "$task_type" "$issue_num" 2>/dev/null || echo "")
+    local routing_log
+    routing_log=$(bash "$SCRIPT_DIR/select-model.sh" --log "$task_type" "$issue_num" 2>/dev/null || echo "")
     local selected_model
     selected_model=$(bash "$SCRIPT_DIR/select-model.sh" "$task_type" "$issue_num" 2>/dev/null || echo "")
+    if [[ -n "$routing_log" ]]; then
+      mkdir -p "$WORKSPACE_PATH"
+      log_file="$WORKSPACE_PATH/routing-log.txt"
+      printf '%s\n' "$routing_log" > "$log_file"
+    fi
     printf '%s\n' "$selected_model"
     return 0
   fi
@@ -101,7 +128,7 @@ if [[ -z "$MODEL" ]]; then
   mkdir -p "$WORKSPACE_PATH"
   printf 'BLOCKED\n' > "$WORKSPACE_PATH/status"
   printf 'No configured OpenCode model is available for task type %s. Run hooks/opencode/setup.sh to choose models.\n' "$TASK_TYPE" > "$WORKSPACE_PATH/BLOCKED_REASON.txt"
-  bash "$REPO_ROOT/hooks/update-state.sh" set-blocked "$ISSUE_KEY" reason="no configured OpenCode model for $TASK_TYPE" 2>/dev/null || true
+  autoship_state_set set-blocked "$ISSUE_KEY" reason="no configured OpenCode model for $TASK_TYPE"
   echo "BLOCKED $ISSUE_KEY: no configured OpenCode model for $TASK_TYPE"
   exit 0
 fi
@@ -116,16 +143,10 @@ fi
 
 FULL_WORKSPACE_PATH=$(bash "$SCRIPT_DIR/create-worktree.sh" "$ISSUE_KEY" "autoship/issue-${ISSUE_NUM}")
 mkdir -p "$WORKSPACE_PATH"
-if [[ -x "$ITEM_RECORD" ]]; then
-  bash "$ITEM_RECORD" init "$ISSUE_NUM" "$TITLE" >/dev/null 2>&1 || true
-  bash "$ITEM_RECORD" append "$ISSUE_NUM" queued 1 "$MODEL" "dispatched as $TASK_TYPE" >/dev/null 2>&1 || true
-fi
 date -u +%Y-%m-%dT%H:%M:%SZ > "$WORKSPACE_PATH/started_at"
 printf 'QUEUED\n' > "$WORKSPACE_PATH/status"
 printf '%s\n' "$MODEL" > "$WORKSPACE_PATH/model"
 printf '%s\n' "$ROLE" > "$WORKSPACE_PATH/role"
-printf '%s\n' "$CRITERIA_JSON" > "$WORKSPACE_PATH/acceptance-criteria.json"
-bash "$SCRIPT_DIR/worktree-checksum.sh" checksum "$FULL_WORKSPACE_PATH" > "$WORKSPACE_PATH/shasum.before" 2>/dev/null || true
 
 cat > "$WORKSPACE_PATH/AUTOSHIP_PROMPT.md" <<EOF
 # AutoShip Agent Prompt
@@ -145,19 +166,12 @@ $MODEL
 $ROLE
 
 ## Body
-$(bash "$SCRIPT_DIR/sanitize-issue.sh" wrap "$SANITIZED_BODY" 2>/dev/null || printf '%s' "$SANITIZED_BODY")
-
-## Normalized Acceptance Criteria
-$CRITERIA_JSON
-
-## Previous Failure Context
-${FAILURE_CONTEXT:-No previous failure context.}
+$BODY
 
 ## Instructions
 - Work only in this worktree: $FULL_WORKSPACE_PATH
 - Implement the issue per its acceptance criteria.
 - Run relevant project checks before finishing.
-- Do not repeat the same failing command. If a command fails, read the error, change approach, and try a simpler supported command or inspect the relevant file directly.
 - Commit changes on branch autoship/issue-$ISSUE_NUM.
 - Write AUTOSHIP_RESULT.md in the worktree.
 - Write COMPLETE, BLOCKED, or STUCK to $FULL_WORKSPACE_PATH/status.
@@ -165,11 +179,9 @@ ${FAILURE_CONTEXT:-No previous failure context.}
 ## PR Title
 Use this conventional PR title when creating a PR:
 $(bash "$SCRIPT_DIR/pr-title.sh" --issue "$ISSUE_NUM" --title "$TITLE" --labels "$LABELS")
-
-$(bash "$SCRIPT_DIR/prompt-policy.sh" "$TITLE" "$BODY" "$LABELS" "$FULL_WORKSPACE_PATH")
 EOF
 
-bash "$REPO_ROOT/hooks/update-state.sh" set-queued "$ISSUE_KEY" agent="$MODEL" model="$MODEL" role="$ROLE" task_type="$TASK_TYPE" 2>/dev/null || true
+autoship_state_set set-queued "$ISSUE_KEY" agent="$MODEL" model="$MODEL" role="$ROLE" task_type="$TASK_TYPE"
 
 echo "Queued issue #$ISSUE_NUM for $MODEL ($TASK_TYPE, role=$ROLE)"
 [[ -n "$cap_note" ]] && echo "$cap_note"

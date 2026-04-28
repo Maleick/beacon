@@ -14,7 +14,6 @@ AUTOSHIP_DIR="$REPO_ROOT/.autoship"
 STATE_FILE="$AUTOSHIP_DIR/state.json"
 WORKSPACES_DIR="$AUTOSHIP_DIR/workspaces"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-source "$SCRIPT_DIR/runtime-config.sh"
 
 if [[ ! -f "$STATE_FILE" ]]; then
   cat <<'EOF'
@@ -33,10 +32,16 @@ if [[ "${AUTOSHIP_STATUS_SKIP_MONITOR:-0}" != "1" && -f "$SCRIPT_DIR/monitor-age
   (cd "$REPO_ROOT" && AUTOSHIP_STATUS_SKIP_MONITOR=1 bash "$SCRIPT_DIR/monitor-agents.sh") >/dev/null 2>&1 || true
 fi
 
-max=$(autoship_max_agents "$STATE_FILE" "$AUTOSHIP_DIR")
+max=$(jq -r '.config.maxConcurrentAgents // .max_concurrent_agents // empty' "$STATE_FILE")
+if [[ -z "$max" && -f "$AUTOSHIP_DIR/config.json" ]]; then
+  max=$(jq -r '.maxConcurrentAgents // .max_agents // empty' "$AUTOSHIP_DIR/config.json" 2>/dev/null || true)
+fi
+max="${max:-15}"
+# Validate max is numeric
+if [[ ! "$max" =~ ^[0-9]+$ ]]; then
+  max=15
+fi
 repo=$(jq -r '.repo // "unknown"' "$STATE_FILE")
-policy=$(jq -r '.config.policyProfile // "default"' "$STATE_FILE" 2>/dev/null || echo default)
-merge_strategy=$(jq -r '.config.mergeStrategy // "safe"' "$STATE_FILE" 2>/dev/null || echo safe)
 active=0
 if [[ -d "$WORKSPACES_DIR" ]]; then
   active=$((grep -Rsl '^RUNNING$' "$WORKSPACES_DIR"/*/status 2>/dev/null || true) | wc -l | tr -d ' ')
@@ -77,8 +82,6 @@ cat <<EOF
               AUTOSHIP STATUS
 ═══════════════════════════════════════════
 Repo:        $repo
-Policy:     $policy
-Merge:      $merge_strategy
 Queue depth: $queue_depth
 
 AGENTS ($active active / $max max)
