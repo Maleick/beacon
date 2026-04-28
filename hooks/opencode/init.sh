@@ -1,5 +1,4 @@
-# init-opencode.sh — Initialize .autoship/ directory for OpenCode
-# Adapted from init.sh for OpenCode's Agent-based execution
+# Initialize .autoship/ directory for OpenCode.
 
 set -euo pipefail
 

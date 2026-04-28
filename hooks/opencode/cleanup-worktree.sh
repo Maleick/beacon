@@ -1,4 +1,4 @@
-# cleanup-worktree-opencode.sh — Clean up worktree after merge
+# Clean up an AutoShip worktree after merge.
 
 set -euo pipefail
 
