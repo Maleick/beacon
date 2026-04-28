@@ -136,6 +136,21 @@ resolve_role() {
 
 MODEL=$(resolve_model "$TASK_TYPE" "$ISSUE_NUM" "$MODEL_OVERRIDE")
 ROLE=$(resolve_role "$TASK_TYPE")
+
+# A/B testing: deterministically assign issue to group and optionally override model
+if [[ -x "$SCRIPT_DIR/ab-test.sh" ]]; then
+  ab_group=$(bash "$SCRIPT_DIR/ab-test.sh" assign "$ISSUE_KEY" "$TASK_TYPE" 2>/dev/null || echo "")
+  if [[ -n "$ab_group" && -f "$REPO_ROOT/.autoship/ab-test.json" ]]; then
+    ab_enabled=$(jq -r '.enabled // false' "$REPO_ROOT/.autoship/ab-test.json" 2>/dev/null || echo "false")
+    if [[ "$ab_enabled" == "true" && -z "$MODEL_OVERRIDE" ]]; then
+      ab_model=$(bash "$SCRIPT_DIR/ab-test.sh" select-model "$TASK_TYPE" "$ab_group" 2>/dev/null || echo "")
+      if [[ -n "$ab_model" ]]; then
+        MODEL="$ab_model"
+      fi
+    fi
+  fi
+fi
+
 if [[ -z "$MODEL" ]]; then
   mkdir -p "$WORKSPACE_PATH"
   printf 'BLOCKED\n' > "$WORKSPACE_PATH/status"
