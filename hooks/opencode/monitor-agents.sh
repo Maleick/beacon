@@ -25,6 +25,7 @@ fi
 REPO_ROOT="$(autoship_repo_root)"
 
 AUTOSHIP_DIR=".autoship"
+STATE_FILE="$AUTOSHIP_DIR/state.json"
 WORKSPACES_DIR="$AUTOSHIP_DIR/workspaces"
 EVENT_QUEUE="$AUTOSHIP_DIR/event-queue.json"
 LOCK_FILE="$AUTOSHIP_DIR/event-queue.lock"
@@ -151,6 +152,7 @@ reconcile_exited_worker() {
 for dir in "$WORKSPACES_DIR"/*/; do
   [[ -d "$dir" ]] || continue
   key=$(basename "$dir")
+  [[ "$key" =~ ^issue-[0-9]+$ ]] || continue
   status_file="$dir/status"
 
   [[ ! -f "$status_file" ]] && continue

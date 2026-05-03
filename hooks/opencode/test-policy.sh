@@ -103,14 +103,20 @@ docs_title=$(bash "$SCRIPT_DIR/pr-title.sh" --issue 2296 --title "mandate poison
 assert_eq "fix: Validate Discord webhook URLs (#2298)" "$fix_title" "bug/security title uses fix prefix"
 assert_eq "docs: mandate poison recovery pattern (#2296)" "$docs_title" "documentation title uses docs prefix"
 
+if grep -Eq 'AUTOSHIP_UNVERIFIED_RELEASE_SYNC|https://api\.github\.com/repos/.*/tarball' "$SCRIPT_DIR/sync-release.sh"; then
+  fail "sync-release must not install unverified GitHub release tarballs"
+fi
+
 PACKAGE_VERIFY_REPO="$TMP_DIR/package-verify-repo"
-mkdir -p "$PACKAGE_VERIFY_REPO/dist" "$PACKAGE_VERIFY_REPO/hooks/opencode" "$PACKAGE_VERIFY_REPO/commands" "$PACKAGE_VERIFY_REPO/skills/autoship-setup" "$PACKAGE_VERIFY_REPO/plugins" "$PACKAGE_VERIFY_REPO/policies" "$PACKAGE_VERIFY_REPO/.autoship"
+mkdir -p "$PACKAGE_VERIFY_REPO/dist" "$PACKAGE_VERIFY_REPO/hooks/opencode" "$PACKAGE_VERIFY_REPO/commands" "$PACKAGE_VERIFY_REPO/skills/autoship-setup" "$PACKAGE_VERIFY_REPO/plugins" "$PACKAGE_VERIFY_REPO/policies" "$PACKAGE_VERIFY_REPO/.opencode" "$PACKAGE_VERIFY_REPO/.autoship"
 cp "$SCRIPT_DIR/../../package.json" "$PACKAGE_VERIFY_REPO/package.json"
 jq '.files += [".autoship", "unintended.tmp"]' "$PACKAGE_VERIFY_REPO/package.json" > "$PACKAGE_VERIFY_REPO/package.json.tmp" && mv "$PACKAGE_VERIFY_REPO/package.json.tmp" "$PACKAGE_VERIFY_REPO/package.json"
 printf 'runtime state\n' > "$PACKAGE_VERIFY_REPO/.autoship/state.json"
 printf 'unintended\n' > "$PACKAGE_VERIFY_REPO/unintended.tmp"
-printf 'built\n' > "$PACKAGE_VERIFY_REPO/dist/index.js"
+printf 'export {};\n' > "$PACKAGE_VERIFY_REPO/dist/index.js"
+printf 'cli\n' > "$PACKAGE_VERIFY_REPO/dist/cli.js"
 printf 'hook\n' > "$PACKAGE_VERIFY_REPO/hooks/init.sh"
+printf 'hook\n' > "$PACKAGE_VERIFY_REPO/hooks/opencode/install.sh"
 printf 'hook\n' > "$PACKAGE_VERIFY_REPO/hooks/opencode/init.sh"
 printf 'hook\n' > "$PACKAGE_VERIFY_REPO/hooks/opencode/sync-release.sh"
 printf 'command\n' > "$PACKAGE_VERIFY_REPO/commands/autoship.md"
@@ -123,7 +129,9 @@ printf '{"policy":"textquest"}\n' > "$PACKAGE_VERIFY_REPO/policies/textquest.jso
 printf 'agents\n' > "$PACKAGE_VERIFY_REPO/AGENTS.md"
 printf '1.0.0\n' > "$PACKAGE_VERIFY_REPO/VERSION"
 printf 'readme\n' > "$PACKAGE_VERIFY_REPO/README.md"
+printf 'install\n' > "$PACKAGE_VERIFY_REPO/INSTALL.md"
 printf 'license\n' > "$PACKAGE_VERIFY_REPO/LICENSE"
+printf 'install\n' > "$PACKAGE_VERIFY_REPO/.opencode/INSTALL.md"
 (
   cd "$PACKAGE_VERIFY_REPO"
   if bash "$SCRIPT_DIR/verify-package.sh" >/dev/null 2>&1; then
@@ -359,7 +367,7 @@ for _ in 1 2 3 4 5; do
 done
 assert_eq "COMPLETE" "$(tr -d '[:space:]' < "$AUTOCOMMIT_REPO/.autoship/workspaces/issue-253/status")" "runner keeps complete status after auto-committing production changes"
 assert_eq "2" "$(git -C "$AUTOCOMMIT_REPO/.autoship/workspaces/issue-253" rev-list --count HEAD)" "runner auto-commits worker changes before completion"
-git -C "$AUTOCOMMIT_REPO/.autoship/workspaces/issue-253" diff --quiet || fail "runner leaves no unstaged worker changes after auto-commit"
+git -C "$AUTOCOMMIT_REPO/.autoship/workspaces/issue-253" diff -- src/lib.rs --quiet || fail "runner leaves no unstaged worker changes after auto-commit"
 
 CARGO_RUNNER_REPO="$TMP_DIR/cargo-runner-repo"
 mkdir -p "$CARGO_RUNNER_REPO/.autoship/workspaces/issue-401" "$CARGO_RUNNER_REPO/hooks/opencode" "$CARGO_RUNNER_REPO/hooks" "$CARGO_RUNNER_REPO/bin"
@@ -521,6 +529,15 @@ printf '999999\n' > "$MONITOR_REPO/.autoship/workspaces/issue-997/worker.pid"
 )
 assert_eq "STUCK" "$(tr -d '[:space:]' < "$MONITOR_REPO/.autoship/workspaces/issue-997/status")" "monitor marks RUNNING workspace stuck when worker pid is no longer live"
 assert_eq "stuck" "$(jq -r '.issues["issue-997"].state' "$MONITOR_REPO/.autoship/state.json")" "monitor reconciles stale RUNNING workspace state"
+mkdir -p "$MONITOR_REPO/.autoship/workspaces/not-an-issue"
+printf 'COMPLETE\n' > "$MONITOR_REPO/.autoship/workspaces/not-an-issue/status"
+(
+  cd "$MONITOR_REPO"
+  bash hooks/opencode/monitor-agents.sh >/dev/null
+)
+if jq -e '.[] | select(.issue == "not-an-issue")' "$MONITOR_REPO/.autoship/event-queue.json" >/dev/null; then
+  fail "monitor skips invalid workspace names"
+fi
 
 TIMEOUT_REPO="$TMP_DIR/monitor-timeout-repo"
 mkdir -p "$TIMEOUT_REPO/.autoship/workspaces/issue-1000" "$TIMEOUT_REPO/hooks/opencode" "$TIMEOUT_REPO/hooks"
@@ -603,8 +620,37 @@ assert_eq "1" "$(jq -r '.stats.failed' "$QUEUE_REPO/.autoship/state.json")" "dup
 assert_eq "0" "$(jq 'length' "$QUEUE_REPO/.autoship/event-queue.json")" "event processor drains processed duplicate events"
 assert_eq "3" "$(jq 'length' "$QUEUE_REPO/.autoship/processed-events.json")" "event processor records only unique semantic events"
 
+QUEUE_INVALID_REPO="$TMP_DIR/queue-invalid-repo"
+mkdir -p "$QUEUE_INVALID_REPO/.autoship" "$QUEUE_INVALID_REPO/hooks/opencode" "$QUEUE_INVALID_REPO/hooks" "$QUEUE_INVALID_REPO/bin"
+git init -q "$QUEUE_INVALID_REPO"
+cp "$SCRIPT_DIR/process-event-queue.sh" "$QUEUE_INVALID_REPO/hooks/opencode/process-event-queue.sh"
+cp "$SCRIPT_DIR/classify-issue.sh" "$QUEUE_INVALID_REPO/hooks/opencode/classify-issue.sh"
+cp "$SCRIPT_DIR/dispatch.sh" "$QUEUE_INVALID_REPO/hooks/opencode/dispatch.sh"
+cp "$SCRIPT_DIR/runner.sh" "$QUEUE_INVALID_REPO/hooks/opencode/runner.sh"
+cp "$SCRIPT_DIR/../update-state.sh" "$QUEUE_INVALID_REPO/hooks/update-state.sh"
+chmod +x "$QUEUE_INVALID_REPO/hooks/opencode/process-event-queue.sh" "$QUEUE_INVALID_REPO/hooks/update-state.sh"
+cat > "$QUEUE_INVALID_REPO/.autoship/state.json" <<'JSON'
+{"repo":"owner/repo","issues":{},"stats":{}}
+JSON
+printf '{"sessions":[]}' > "$QUEUE_INVALID_REPO/.autoship/token-ledger.json"
+cat > "$QUEUE_INVALID_REPO/.autoship/event-queue.json" <<'JSON'
+[
+  {"type":"blocked","issue":"../blocked","priority":2,"queued_at":"2026-04-24T00:00:00Z"},
+  "not-an-object",
+  {"type":"stuck","issue":"issue-abc","priority":2,"queued_at":"2026-04-24T00:00:01Z"},
+  {"type":"force_dispatch","issue":"--help","priority":2,"queued_at":"2026-04-24T00:00:02Z"}
+]
+JSON
+(
+  cd "$QUEUE_INVALID_REPO"
+  PATH="$QUEUE_INVALID_REPO/bin:$PATH" bash hooks/opencode/process-event-queue.sh >"$TMP_DIR/queue-invalid.out" 2>&1
+)
+assert_eq "0" "$(jq 'length' "$QUEUE_INVALID_REPO/.autoship/event-queue.json")" "event processor drops malformed issue-key events"
+assert_eq "{}" "$(jq -c '.issues' "$QUEUE_INVALID_REPO/.autoship/state.json")" "invalid issue-key events do not mutate state"
+grep -F 'Dropping malformed event' "$TMP_DIR/queue-invalid.out" >/dev/null || fail "event processor reports malformed events"
+
 VERIFY_FAIL_REPO="$TMP_DIR/verify-fail-repo"
-mkdir -p "$VERIFY_FAIL_REPO/.autoship/workspaces/issue-184" "$VERIFY_FAIL_REPO/hooks/opencode" "$VERIFY_FAIL_REPO/hooks" "$VERIFY_FAIL_REPO/bin"
+mkdir -p "$VERIFY_FAIL_REPO/.autoship/workspaces/issue-184" "$VERIFY_FAIL_REPO/hooks/opencode" "$VERIFY_FAIL_REPO/hooks" "$VERIFY_FAIL_REPO/bin" "$VERIFY_FAIL_REPO/policies"
 git init -q "$VERIFY_FAIL_REPO"
 git -C "$VERIFY_FAIL_REPO" config user.email autoship@example.invalid
 git -C "$VERIFY_FAIL_REPO" config user.name AutoShip
@@ -616,6 +662,9 @@ printf 'changed\n' > "$VERIFY_FAIL_REPO/feature.txt"
 cp "$SCRIPT_DIR/process-event-queue.sh" "$VERIFY_FAIL_REPO/hooks/opencode/process-event-queue.sh"
 cp "$SCRIPT_DIR/pr-title.sh" "$VERIFY_FAIL_REPO/hooks/opencode/pr-title.sh"
 cp "$SCRIPT_DIR/verify-result.sh" "$VERIFY_FAIL_REPO/hooks/opencode/verify-result.sh"
+cp "$SCRIPT_DIR/policy-verify.sh" "$VERIFY_FAIL_REPO/hooks/opencode/policy-verify.sh"
+cp "$SCRIPT_DIR/policy.sh" "$VERIFY_FAIL_REPO/hooks/opencode/policy.sh"
+cp "$REPO_ROOT/policies/default.json" "$VERIFY_FAIL_REPO/policies/default.json"
 cp "$SCRIPT_DIR/../update-state.sh" "$VERIFY_FAIL_REPO/hooks/update-state.sh"
 chmod +x "$VERIFY_FAIL_REPO/hooks/opencode/process-event-queue.sh" "$VERIFY_FAIL_REPO/hooks/opencode/pr-title.sh" "$VERIFY_FAIL_REPO/hooks/opencode/verify-result.sh" "$VERIFY_FAIL_REPO/hooks/update-state.sh"
 cat > "$VERIFY_FAIL_REPO/hooks/opencode/reviewer.sh" <<'SH'
@@ -661,7 +710,7 @@ test ! -e "$VERIFY_FAIL_REPO/gh-pr.log" || fail "failed verification must not ca
 assert_eq "blocked" "$(jq -r '.issues["issue-184"].state' "$VERIFY_FAIL_REPO/.autoship/state.json")" "failed verification blocks issue instead of completing it"
 
 VERIFY_PASS_REPO="$TMP_DIR/verify-pass-repo"
-mkdir -p "$VERIFY_PASS_REPO/.autoship/workspaces/issue-184" "$VERIFY_PASS_REPO/hooks/opencode" "$VERIFY_PASS_REPO/hooks" "$VERIFY_PASS_REPO/bin"
+mkdir -p "$VERIFY_PASS_REPO/.autoship/workspaces/issue-184" "$VERIFY_PASS_REPO/hooks/opencode" "$VERIFY_PASS_REPO/hooks" "$VERIFY_PASS_REPO/bin" "$VERIFY_PASS_REPO/policies"
 git init -q "$VERIFY_PASS_REPO"
 git -C "$VERIFY_PASS_REPO" config user.email autoship@example.invalid
 git -C "$VERIFY_PASS_REPO" config user.name AutoShip
@@ -674,6 +723,9 @@ printf 'changed\n' > "$VERIFY_PASS_REPO/feature.txt"
 cp "$SCRIPT_DIR/process-event-queue.sh" "$VERIFY_PASS_REPO/hooks/opencode/process-event-queue.sh"
 cp "$SCRIPT_DIR/pr-title.sh" "$VERIFY_PASS_REPO/hooks/opencode/pr-title.sh"
 cp "$SCRIPT_DIR/verify-result.sh" "$VERIFY_PASS_REPO/hooks/opencode/verify-result.sh"
+cp "$SCRIPT_DIR/policy-verify.sh" "$VERIFY_PASS_REPO/hooks/opencode/policy-verify.sh"
+cp "$SCRIPT_DIR/policy.sh" "$VERIFY_PASS_REPO/hooks/opencode/policy.sh"
+cp "$REPO_ROOT/policies/default.json" "$VERIFY_PASS_REPO/policies/default.json"
 cp "$SCRIPT_DIR/../update-state.sh" "$VERIFY_PASS_REPO/hooks/update-state.sh"
 chmod +x "$VERIFY_PASS_REPO/hooks/opencode/process-event-queue.sh" "$VERIFY_PASS_REPO/hooks/opencode/pr-title.sh" "$VERIFY_PASS_REPO/hooks/opencode/verify-result.sh" "$VERIFY_PASS_REPO/hooks/update-state.sh"
 cat > "$VERIFY_PASS_REPO/hooks/opencode/reviewer.sh" <<'SH'
@@ -722,7 +774,7 @@ grep -F 'Reviewer: PASS' "$VERIFY_PASS_REPO/.autoship/workspaces/issue-184/AUTOS
 assert_eq "completed" "$(jq -r '.issues["issue-184"].state' "$VERIFY_PASS_REPO/.autoship/state.json")" "verified PASS completes issue after PR creation"
 
 VERIFY_HOOK_PASS_REPO="$TMP_DIR/verify-hook-pass-repo"
-mkdir -p "$VERIFY_HOOK_PASS_REPO/.autoship/workspaces/issue-182" "$VERIFY_HOOK_PASS_REPO/hooks/opencode"
+mkdir -p "$VERIFY_HOOK_PASS_REPO/.autoship/workspaces/issue-182" "$VERIFY_HOOK_PASS_REPO/hooks/opencode" "$VERIFY_HOOK_PASS_REPO/policies"
 git init -q "$VERIFY_HOOK_PASS_REPO"
 git -C "$VERIFY_HOOK_PASS_REPO" config user.email autoship@example.invalid
 git -C "$VERIFY_HOOK_PASS_REPO" config user.name AutoShip
@@ -736,6 +788,8 @@ git -C "$VERIFY_HOOK_PASS_REPO" commit -q -m 'feat: issue 182'
 cp "$SCRIPT_DIR/verify-result.sh" "$VERIFY_HOOK_PASS_REPO/hooks/opencode/verify-result.sh"
 chmod +x "$VERIFY_HOOK_PASS_REPO/hooks/opencode/verify-result.sh"
 cp "$SCRIPT_DIR/policy-verify.sh" "$VERIFY_HOOK_PASS_REPO/hooks/opencode/policy-verify.sh"
+cp "$SCRIPT_DIR/policy.sh" "$VERIFY_HOOK_PASS_REPO/hooks/opencode/policy.sh"
+cp "$REPO_ROOT/policies/default.json" "$VERIFY_HOOK_PASS_REPO/policies/default.json"
 cat > "$VERIFY_HOOK_PASS_REPO/hooks/opencode/reviewer.sh" <<'SH'
 #!/usr/bin/env bash
 printf 'VERDICT: PASS\n'
@@ -751,8 +805,45 @@ touch -t 202604240001 "$VERIFY_HOOK_PASS_REPO/.autoship/workspaces/issue-182/AUT
 )
 grep -F 'PASS' /tmp/autoship-verify-pass.out >/dev/null || fail "deterministic verification hook emits PASS"
 
+VERIFY_HOOK_ENV_REPO="$TMP_DIR/verify-hook-env-repo"
+mkdir -p "$VERIFY_HOOK_ENV_REPO/.autoship/workspaces/issue-182" "$VERIFY_HOOK_ENV_REPO/hooks/opencode" "$VERIFY_HOOK_ENV_REPO/policies" "$VERIFY_HOOK_ENV_REPO/bin"
+git init -q "$VERIFY_HOOK_ENV_REPO"
+git -C "$VERIFY_HOOK_ENV_REPO" config user.email autoship@example.invalid
+git -C "$VERIFY_HOOK_ENV_REPO" config user.name AutoShip
+printf 'base\n' > "$VERIFY_HOOK_ENV_REPO/README.md"
+git -C "$VERIFY_HOOK_ENV_REPO" add README.md
+git -C "$VERIFY_HOOK_ENV_REPO" commit -q -m initial
+git -C "$VERIFY_HOOK_ENV_REPO" checkout -q -b autoship/issue-182
+printf 'changed\n' > "$VERIFY_HOOK_ENV_REPO/feature.txt"
+git -C "$VERIFY_HOOK_ENV_REPO" add feature.txt
+git -C "$VERIFY_HOOK_ENV_REPO" commit -q -m 'feat: issue 182'
+cp "$SCRIPT_DIR/verify-result.sh" "$VERIFY_HOOK_ENV_REPO/hooks/opencode/verify-result.sh"
+chmod +x "$VERIFY_HOOK_ENV_REPO/hooks/opencode/verify-result.sh"
+cp "$SCRIPT_DIR/policy-verify.sh" "$VERIFY_HOOK_ENV_REPO/hooks/opencode/policy-verify.sh"
+cp "$SCRIPT_DIR/policy.sh" "$VERIFY_HOOK_ENV_REPO/hooks/opencode/policy.sh"
+cp "$REPO_ROOT/policies/default.json" "$VERIFY_HOOK_ENV_REPO/policies/default.json"
+cat > "$VERIFY_HOOK_ENV_REPO/hooks/opencode/reviewer.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'VERDICT: PASS\n'
+SH
+chmod +x "$VERIFY_HOOK_ENV_REPO/hooks/opencode/reviewer.sh"
+cat > "$VERIFY_HOOK_ENV_REPO/bin/require-ci" <<'SH'
+#!/usr/bin/env bash
+test "${CI:-}" = "1"
+SH
+chmod +x "$VERIFY_HOOK_ENV_REPO/bin/require-ci"
+printf '2026-04-24T00:00:00Z\n' > "$VERIFY_HOOK_ENV_REPO/.autoship/workspaces/issue-182/started_at"
+printf 'Result summary\n' > "$VERIFY_HOOK_ENV_REPO/.autoship/workspaces/issue-182/AUTOSHIP_RESULT.md"
+touch -t 202604240000 "$VERIFY_HOOK_ENV_REPO/.autoship/workspaces/issue-182/started_at"
+touch -t 202604240001 "$VERIFY_HOOK_ENV_REPO/.autoship/workspaces/issue-182/AUTOSHIP_RESULT.md"
+(
+  cd "$VERIFY_HOOK_ENV_REPO"
+  bash hooks/opencode/verify-result.sh issue-182 "$VERIFY_HOOK_ENV_REPO/.autoship/workspaces/issue-182" "CI=1 PATH=$VERIFY_HOOK_ENV_REPO/bin:$PATH require-ci" >/tmp/autoship-verify-env.out
+)
+grep -F 'PASS' /tmp/autoship-verify-env.out >/dev/null || fail "deterministic verification hook supports env-prefixed test commands"
+
 VERIFY_HOOK_FAIL_REPO="$TMP_DIR/verify-hook-fail-repo"
-mkdir -p "$VERIFY_HOOK_FAIL_REPO/.autoship/workspaces/issue-182" "$VERIFY_HOOK_FAIL_REPO/hooks/opencode"
+mkdir -p "$VERIFY_HOOK_FAIL_REPO/.autoship/workspaces/issue-182" "$VERIFY_HOOK_FAIL_REPO/hooks/opencode" "$VERIFY_HOOK_FAIL_REPO/policies"
 git init -q "$VERIFY_HOOK_FAIL_REPO"
 git -C "$VERIFY_HOOK_FAIL_REPO" config user.email autoship@example.invalid
 git -C "$VERIFY_HOOK_FAIL_REPO" config user.name AutoShip
@@ -766,6 +857,8 @@ git -C "$VERIFY_HOOK_FAIL_REPO" commit -q -m 'feat: issue 182'
 cp "$SCRIPT_DIR/verify-result.sh" "$VERIFY_HOOK_FAIL_REPO/hooks/opencode/verify-result.sh"
 chmod +x "$VERIFY_HOOK_FAIL_REPO/hooks/opencode/verify-result.sh"
 cp "$SCRIPT_DIR/policy-verify.sh" "$VERIFY_HOOK_FAIL_REPO/hooks/opencode/policy-verify.sh"
+cp "$SCRIPT_DIR/policy.sh" "$VERIFY_HOOK_FAIL_REPO/hooks/opencode/policy.sh"
+cp "$REPO_ROOT/policies/default.json" "$VERIFY_HOOK_FAIL_REPO/policies/default.json"
 cat > "$VERIFY_HOOK_FAIL_REPO/hooks/opencode/reviewer.sh" <<'SH'
 #!/usr/bin/env bash
 printf 'VERDICT: PASS\n'
@@ -784,7 +877,7 @@ fi
 grep -F 'FAIL' /tmp/autoship-verify-fail.out >/dev/null || fail "deterministic verification hook emits FAIL"
 
 VERIFY_HOOK_TEST_FAIL_REPO="$TMP_DIR/verify-hook-test-fail-repo"
-mkdir -p "$VERIFY_HOOK_TEST_FAIL_REPO/.autoship/workspaces/issue-182" "$VERIFY_HOOK_TEST_FAIL_REPO/hooks/opencode"
+mkdir -p "$VERIFY_HOOK_TEST_FAIL_REPO/.autoship/workspaces/issue-182" "$VERIFY_HOOK_TEST_FAIL_REPO/hooks/opencode" "$VERIFY_HOOK_TEST_FAIL_REPO/policies"
 git init -q "$VERIFY_HOOK_TEST_FAIL_REPO"
 git -C "$VERIFY_HOOK_TEST_FAIL_REPO" config user.email autoship@example.invalid
 git -C "$VERIFY_HOOK_TEST_FAIL_REPO" config user.name AutoShip
@@ -798,6 +891,8 @@ git -C "$VERIFY_HOOK_TEST_FAIL_REPO" commit -q -m 'feat: issue 182'
 cp "$SCRIPT_DIR/verify-result.sh" "$VERIFY_HOOK_TEST_FAIL_REPO/hooks/opencode/verify-result.sh"
 chmod +x "$VERIFY_HOOK_TEST_FAIL_REPO/hooks/opencode/verify-result.sh"
 cp "$SCRIPT_DIR/policy-verify.sh" "$VERIFY_HOOK_TEST_FAIL_REPO/hooks/opencode/policy-verify.sh"
+cp "$SCRIPT_DIR/policy.sh" "$VERIFY_HOOK_TEST_FAIL_REPO/hooks/opencode/policy.sh"
+cp "$REPO_ROOT/policies/default.json" "$VERIFY_HOOK_TEST_FAIL_REPO/policies/default.json"
 cat > "$VERIFY_HOOK_TEST_FAIL_REPO/hooks/opencode/reviewer.sh" <<'SH'
 #!/usr/bin/env bash
 printf 'VERDICT: PASS\n'
@@ -814,6 +909,41 @@ if (
   fail "deterministic verification hook fails failing test command"
 fi
 grep -F 'test command failed' "$VERIFY_HOOK_TEST_FAIL_REPO/.autoship/workspaces/issue-182/AUTOSHIP_VERIFICATION.log" >/dev/null || fail "deterministic verification hook records failing test command"
+
+VERIFY_HOOK_INJECTION_REPO="$TMP_DIR/verify-hook-injection-repo"
+mkdir -p "$VERIFY_HOOK_INJECTION_REPO/.autoship/workspaces/issue-182" "$VERIFY_HOOK_INJECTION_REPO/hooks/opencode" "$VERIFY_HOOK_INJECTION_REPO/policies"
+git init -q "$VERIFY_HOOK_INJECTION_REPO"
+git -C "$VERIFY_HOOK_INJECTION_REPO" config user.email autoship@example.invalid
+git -C "$VERIFY_HOOK_INJECTION_REPO" config user.name AutoShip
+printf 'base\n' > "$VERIFY_HOOK_INJECTION_REPO/README.md"
+git -C "$VERIFY_HOOK_INJECTION_REPO" add README.md
+git -C "$VERIFY_HOOK_INJECTION_REPO" commit -q -m initial
+git -C "$VERIFY_HOOK_INJECTION_REPO" checkout -q -b autoship/issue-182
+printf 'changed\n' > "$VERIFY_HOOK_INJECTION_REPO/feature.txt"
+git -C "$VERIFY_HOOK_INJECTION_REPO" add feature.txt
+git -C "$VERIFY_HOOK_INJECTION_REPO" commit -q -m 'feat: issue 182'
+cp "$SCRIPT_DIR/verify-result.sh" "$VERIFY_HOOK_INJECTION_REPO/hooks/opencode/verify-result.sh"
+chmod +x "$VERIFY_HOOK_INJECTION_REPO/hooks/opencode/verify-result.sh"
+cp "$SCRIPT_DIR/policy-verify.sh" "$VERIFY_HOOK_INJECTION_REPO/hooks/opencode/policy-verify.sh"
+cp "$SCRIPT_DIR/policy.sh" "$VERIFY_HOOK_INJECTION_REPO/hooks/opencode/policy.sh"
+cp "$REPO_ROOT/policies/default.json" "$VERIFY_HOOK_INJECTION_REPO/policies/default.json"
+cat > "$VERIFY_HOOK_INJECTION_REPO/hooks/opencode/reviewer.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'VERDICT: PASS\n'
+SH
+chmod +x "$VERIFY_HOOK_INJECTION_REPO/hooks/opencode/reviewer.sh"
+printf '2026-04-24T00:00:00Z\n' > "$VERIFY_HOOK_INJECTION_REPO/.autoship/workspaces/issue-182/started_at"
+printf 'Result summary\n' > "$VERIFY_HOOK_INJECTION_REPO/.autoship/workspaces/issue-182/AUTOSHIP_RESULT.md"
+touch -t 202604240000 "$VERIFY_HOOK_INJECTION_REPO/.autoship/workspaces/issue-182/started_at"
+touch -t 202604240001 "$VERIFY_HOOK_INJECTION_REPO/.autoship/workspaces/issue-182/AUTOSHIP_RESULT.md"
+if (
+  cd "$VERIFY_HOOK_INJECTION_REPO"
+  bash hooks/opencode/verify-result.sh issue-182 "$VERIFY_HOOK_INJECTION_REPO/.autoship/workspaces/issue-182" 'true $(touch /tmp/autoship-injected)' >/tmp/autoship-verify-injection.out 2>&1
+); then
+  fail "deterministic verification hook rejects shell substitution in test command"
+fi
+test ! -e /tmp/autoship-injected || fail "deterministic verification hook must not execute shell substitution"
+grep -F 'unsupported characters' "$VERIFY_HOOK_INJECTION_REPO/.autoship/workspaces/issue-182/AUTOSHIP_VERIFICATION.log" >/dev/null || fail "deterministic verification hook records unsupported test command characters"
 
 REVIEWER_REPO="$TMP_DIR/reviewer-repo"
 mkdir -p "$REVIEWER_REPO/hooks/opencode" "$REVIEWER_REPO/hooks" "$REVIEWER_REPO/bin" "$REVIEWER_REPO/.autoship/workspaces/issue-183"
@@ -894,6 +1024,47 @@ printf 'stale\n' > "$WORKTREE_REPO/.autoship/workspaces/issue-156/AUTOSHIP_RESUL
 test -d "$WORKTREE_REPO/.autoship/workspaces/issue-156/.git" || test -f "$WORKTREE_REPO/.autoship/workspaces/issue-156/.git" || fail "create-worktree replaces stale existing workspace directory"
 test ! -e "$WORKTREE_REPO/.autoship/workspaces/issue-156/AUTOSHIP_RESULT.md" || fail "create-worktree clears stale AutoShip artifacts after recovery"
 test -f "$WORKTREE_REPO/.autoship/workspaces/issue-156/.autoship/model-routing.json" || fail "create-worktree copies runtime routing into the workspace"
+if (
+  cd "$WORKTREE_REPO"
+  bash "$SCRIPT_DIR/create-worktree.sh" 'issue-156/../../escape' 'autoship/issue-156/../../escape' >/tmp/autoship-worktree-invalid.out 2>&1
+); then
+  fail "create-worktree rejects path-like issue keys"
+fi
+grep -F 'issue key must match issue-<number>' /tmp/autoship-worktree-invalid.out >/dev/null || fail "create-worktree reports invalid issue key"
+
+CANCEL_REPO="$TMP_DIR/cancel-repo"
+mkdir -p "$CANCEL_REPO/hooks/opencode" "$CANCEL_REPO/hooks"
+git init -q "$CANCEL_REPO"
+cp "$SCRIPT_DIR/cancel.sh" "$CANCEL_REPO/hooks/opencode/cancel.sh"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$CANCEL_REPO/hooks/update-state.sh"
+chmod +x "$CANCEL_REPO/hooks/opencode/cancel.sh" "$CANCEL_REPO/hooks/update-state.sh"
+if (
+  cd "$CANCEL_REPO"
+  bash hooks/opencode/cancel.sh '../escape' >/tmp/autoship-cancel-invalid.out 2>&1
+); then
+  fail "cancel rejects path-like issue keys"
+fi
+test ! -e "$CANCEL_REPO/.autoship/workspaces/issue-../escape" || fail "cancel must not create path-like workspace"
+grep -F 'issue key must match issue-<number>' /tmp/autoship-cancel-invalid.out >/dev/null || fail "cancel reports invalid issue key"
+
+AUTO_MERGE_REPO="$TMP_DIR/auto-merge-repo"
+mkdir -p "$AUTO_MERGE_REPO/hooks/opencode" "$AUTO_MERGE_REPO/bin"
+git init -q "$AUTO_MERGE_REPO"
+cp "$SCRIPT_DIR/auto-merge.sh" "$AUTO_MERGE_REPO/hooks/opencode/auto-merge.sh"
+chmod +x "$AUTO_MERGE_REPO/hooks/opencode/auto-merge.sh"
+cat > "$AUTO_MERGE_REPO/bin/gh" <<'SH'
+#!/usr/bin/env bash
+printf 'gh should not be called\n' >&2
+exit 1
+SH
+chmod +x "$AUTO_MERGE_REPO/bin/gh"
+if (
+  cd "$AUTO_MERGE_REPO"
+  PATH="$AUTO_MERGE_REPO/bin:$PATH" bash hooks/opencode/auto-merge.sh '../1' >/tmp/autoship-auto-merge-invalid.out 2>&1
+); then
+  fail "auto-merge rejects nonnumeric PR numbers"
+fi
+grep -F 'PR number must be numeric' /tmp/autoship-auto-merge-invalid.out >/dev/null || fail "auto-merge reports invalid PR number"
 
 MERGE_REPO="$TMP_DIR/merge-repo"
 mkdir -p "$MERGE_REPO/bin"
@@ -1037,7 +1208,7 @@ chmod +x "$SETUP_REPO/bin/opencode"
   printf '%s\n' "$setup_output" | grep -F '/autoship' >/dev/null || fail "setup prints autoship next step"
   jq -e '.models | length == 5' .autoship/model-routing.json >/dev/null || fail "setup writes all live free models by default"
   jq -e '.maxConcurrentAgents == 15 and .max_agents == 15' .autoship/config.json >/dev/null || fail "setup writes default concurrency cap consumed by runtime"
-  jq -e '.roles.planner == "openai/gpt-5.5" and .roles.coordinator == "openai/gpt-5.5" and .roles.orchestrator == "openai/gpt-5.5" and .roles.lead == "openai/gpt-5.5"' .autoship/model-routing.json >/dev/null || fail "setup configures GPT-5.5 as planner/coordinator/orchestrator/lead"
+  jq -e '.roles.planner == "opencode/nemotron-3-super-free" and .roles.coordinator == "opencode/nemotron-3-super-free" and .roles.orchestrator == "opencode/nemotron-3-super-free" and .roles.reviewer == "opencode/nemotron-3-super-free" and .roles.lead == "opencode/nemotron-3-super-free"' .autoship/model-routing.json >/dev/null || fail "setup configures live free-first role defaults"
   jq -e '.pools != null and .pools.default != null and .pools.frontend != null and .pools.backend != null and .pools.docs != null' .autoship/model-routing.json >/dev/null || fail "setup writes worker pools"
   jq -e 'all(.models[]; .cost == "free")' .autoship/model-routing.json >/dev/null || fail "default setup excludes paid worker models"
   jq -e 'all(.models[]; .id != "openai/gpt-5.5")' .autoship/model-routing.json >/dev/null || fail "planner model is not used as a default worker"
@@ -1061,6 +1232,9 @@ chmod +x "$SETUP_REPO/bin/opencode"
   fi
   if AUTOSHIP_MODELS='openai/gpt-5.5-fast' PATH="$SETUP_REPO/bin:$PATH" bash hooks/opencode/setup.sh >/dev/null 2>&1; then
     fail "setup rejects gpt-5.5-fast"
+  fi
+  if AUTOSHIP_LEAD_MODEL='openai/gpt-5.5-fast' PATH="$SETUP_REPO/bin:$PATH" bash hooks/opencode/setup.sh >/dev/null 2>&1; then
+    fail "setup rejects forbidden lead model override"
   fi
   AUTOSHIP_LEAD_MODEL=openai/gpt-5.5 PATH="$SETUP_REPO/bin:$PATH" bash hooks/opencode/setup.sh >/dev/null
   jq -e '.roles.lead == "openai/gpt-5.5"' .autoship/model-routing.json >/dev/null || fail "setup accepts lead model override via AUTOSHIP_LEAD_MODEL"
@@ -1091,14 +1265,14 @@ cat > "$SELECT_REPO/.autoship/model-routing.json" <<'JSON'
   ]
 }
 JSON
-assert_eq "free/strong:free" "$(cd "$SELECT_REPO" && bash hooks/opencode/select-model.sh simple_code 101)" "selector treats missing model history as empty"
+assert_eq "free/strong:free" "$(cd "$SELECT_REPO" && bash hooks/opencode/select-model.sh simple_code 100)" "selector treats missing model history as empty"
 cat > "$SELECT_REPO/.autoship/model-history.json" <<'JSON'
 {
   "free/strong:free": {"success": 0, "fail": 6},
   "free/reliable:free": {"success": 4, "fail": 0}
 }
 JSON
-assert_eq "free/reliable:free" "$(cd "$SELECT_REPO" && bash hooks/opencode/select-model.sh simple_code 101)" "selector learns from previous run outcomes"
+assert_eq "free/reliable:free" "$(cd "$SELECT_REPO" && bash hooks/opencode/select-model.sh simple_code 100)" "selector learns from previous run outcomes"
 assert_eq "openai/gpt-5.3-codex-spark" "$(cd "$SELECT_REPO" && bash hooks/opencode/select-model.sh complex 102)" "selector can choose selected Spark model for complex work"
 assert_eq "opencode-go/qwen3.6-plus" "$(cd "$SELECT_REPO" && bash hooks/opencode/select-model.sh medium_code 103)" "selector can choose Go model when best for task"
 assert_eq "openai/gpt-5.5" "$(cd "$SELECT_REPO" && bash hooks/opencode/select-model.sh --role planner)" "selector returns GPT-5.5 planner role"
@@ -1109,7 +1283,7 @@ assert_eq "true" "$(echo "$POOL_MODELS" | grep -q "free/strong:free" && echo "tr
 POOL_MODELS=$(cd "$SELECT_REPO" && bash hooks/opencode/select-model.sh --pool frontend)
 assert_eq "true" "$(echo "$POOL_MODELS" | grep -q "free/strong:free" && echo "true" || echo "false")" "selector --pool frontend returns frontend pool models"
 
-ROUTING_LOG=$(cd "$SELECT_REPO" && bash hooks/opencode/select-model.sh --log simple_code 101)
+ROUTING_LOG=$(cd "$SELECT_REPO" && bash hooks/opencode/select-model.sh --log simple_code 100)
 assert_eq "true" "$(echo "$ROUTING_LOG" | grep -q "routing_log:" && echo "true" || echo "false")" "selector --log outputs routing log"
 assert_eq "true" "$(echo "$ROUTING_LOG" | grep -q "selection: free/strong:free" && echo "true" || echo "false")" "routing log shows free model selection"
 assert_eq "true" "$(echo "$ROUTING_LOG" | grep -q "score:" && echo "true" || echo "false")" "routing log shows score"
@@ -1123,7 +1297,7 @@ cat > "$SELECT_REPO/.autoship/model-history.json" <<'JSON'
 }
 JSON
 
-ROUTING_LOG_ESCALATE=$(cd "$SELECT_REPO" && bash hooks/opencode/select-model.sh --log simple_code 101)
+ROUTING_LOG_ESCALATE=$(cd "$SELECT_REPO" && bash hooks/opencode/select-model.sh --log simple_code 100)
 assert_eq "true" "$(echo "$ROUTING_LOG_ESCALATE" | grep -q "free model selected by default" && echo "true" || echo "false")" "routing log shows free selection reason"
 
 cat > "$SELECT_REPO/.autoship/model-routing.json" <<'JSON'
@@ -1298,6 +1472,14 @@ chmod +x "$FIXTURE_REPO/bin/gh" "$FIXTURE_REPO/bin/opencode"
   assert_eq "QUEUED" "$(tr -d '[:space:]' < .autoship/workspaces/issue-188/status)" "fixture dispatch queues content formerly blocked by safety filter"
   PATH="$FIXTURE_REPO/bin:$PATH" bash hooks/opencode/dispatch.sh 189 medium_code >/dev/null
   assert_eq "QUEUED" "$(tr -d '[:space:]' < .autoship/workspaces/issue-189/status)" "fixture dispatch creates queued safe worktree"
+  mkdir -p "$TMP_DIR/symlink-workspaces"
+  mv .autoship/workspaces "$TMP_DIR/symlink-workspaces/workspaces"
+  ln -s "$TMP_DIR/symlink-workspaces/workspaces" .autoship/workspaces
+  if PATH="$FIXTURE_REPO/bin:$PATH" bash hooks/opencode/dispatch.sh 190 medium_code >/dev/null 2>&1; then
+    fail "dispatch refuses symlinked workspaces parent"
+  fi
+  rm .autoship/workspaces
+  mv "$TMP_DIR/symlink-workspaces/workspaces" .autoship/workspaces
   PATH="$FIXTURE_REPO/bin:$PATH" bash hooks/opencode/runner.sh >/dev/null
   for _ in 1 2 3 4 5; do
     [[ "$(tr -d '[:space:]' < .autoship/workspaces/issue-189/status)" != "RUNNING" ]] && break
@@ -1329,6 +1511,47 @@ chmod +x "$FIXTURE_REPO/bin/gh" "$FIXTURE_REPO/bin/opencode"
   fi
 )
 
+SYNC_REPO="$TMP_DIR/sync-release-repo"
+cp -R "$SCRIPT_DIR/../.." "$SYNC_REPO"
+(
+  cd "$SYNC_REPO"
+  CONFIG_DIR="$TMP_DIR/sync-config"
+  OPENCODE_CONFIG_DIR="$CONFIG_DIR" bash hooks/opencode/sync-release.sh >/dev/null
+  test -d "$CONFIG_DIR/.autoship/hooks" || fail "sync-release copies hooks"
+  rm -rf "$CONFIG_DIR/.autoship/hooks"
+  printf 'stale file\n' > "$CONFIG_DIR/.autoship/hooks"
+  OPENCODE_CONFIG_DIR="$CONFIG_DIR" bash hooks/opencode/sync-release.sh >/dev/null
+  test -d "$CONFIG_DIR/.autoship/hooks" || fail "sync-release replaces stale managed files with directories"
+  AGENTS_TARGET="$TMP_DIR/sync-agents-target"
+  printf 'original\n' > "$AGENTS_TARGET"
+  rm "$CONFIG_DIR/.autoship/AGENTS.md"
+  ln -s "$AGENTS_TARGET" "$CONFIG_DIR/.autoship/AGENTS.md"
+  if OPENCODE_CONFIG_DIR="$CONFIG_DIR" bash hooks/opencode/sync-release.sh >"$TMP_DIR/sync-symlink-leaf.out" 2>&1; then
+    fail "sync-release refuses symlinked destination leaf files"
+  fi
+  grep -F 'refusing to operate on symlinked path' "$TMP_DIR/sync-symlink-leaf.out" >/dev/null || fail "sync-release reports symlinked destination leaf file"
+  assert_eq "original" "$(tr -d '\n' < "$AGENTS_TARGET")" "sync-release does not write through symlinked destination leaf"
+  rm -rf "$CONFIG_DIR" skills
+  ln -s "$TMP_DIR" skills
+  if OPENCODE_CONFIG_DIR="$CONFIG_DIR" bash hooks/opencode/sync-release.sh >"$TMP_DIR/sync-symlink-src.out" 2>&1; then
+    fail "sync-release refuses symlinked source assets"
+  fi
+  grep -E 'refusing to (copy symlinked source path|operate on symlinked path)' "$TMP_DIR/sync-symlink-src.out" >/dev/null || fail "sync-release reports symlinked source asset"
+)
+
+SELF_SYNC_CONFIG="$TMP_DIR/self-sync-config"
+SELF_AUTOSHIP_HOME="$SELF_SYNC_CONFIG/.autoship"
+mkdir -p "$SELF_SYNC_CONFIG"
+cp -R "$SCRIPT_DIR/../.." "$SELF_AUTOSHIP_HOME"
+rm -rf "$SELF_AUTOSHIP_HOME/plugins"
+mkdir -p "$TMP_DIR/self-sync-plugin-target"
+printf 'external plugin\n' > "$TMP_DIR/self-sync-plugin-target/autoship.ts"
+ln -s "$TMP_DIR/self-sync-plugin-target" "$SELF_AUTOSHIP_HOME/plugins"
+if OPENCODE_CONFIG_DIR="$SELF_SYNC_CONFIG" bash "$SELF_AUTOSHIP_HOME/hooks/opencode/sync-release.sh" >"$TMP_DIR/self-sync-symlink.out" 2>&1; then
+  fail "sync-release self-install refuses symlinked plugin parent"
+fi
+grep -F 'refusing to operate on symlinked path' "$TMP_DIR/self-sync-symlink.out" >/dev/null || fail "sync-release self-install reports symlinked plugin parent"
+
 PACKAGE_REPO="$TMP_DIR/package-repo"
 cp -R "$SCRIPT_DIR/../.." "$PACKAGE_REPO"
 (
@@ -1352,6 +1575,35 @@ cp -R "$SCRIPT_DIR/../.." "$PACKAGE_REPO"
   test -d "$CONFIG_DIR/.autoship/skills" || fail "package installer copies skills"
   test -f "$CONFIG_DIR/.autoship/AGENTS.md" || fail "package installer copies AGENTS.md"
   test -f "$CONFIG_DIR/.autoship/VERSION" || fail "package installer copies VERSION"
+  SYMLINK_CONFIG_DIR="$TMP_DIR/package-symlink-config"
+  mkdir -p "$SYMLINK_CONFIG_DIR/.autoship"
+  ln -s "$TMP_DIR" "$SYMLINK_CONFIG_DIR/.autoship/hooks"
+  if OPENCODE_CONFIG_DIR="$SYMLINK_CONFIG_DIR" node dist/cli.js install >"$TMP_DIR/package-symlink-dest.out" 2>&1; then
+    fail "package installer refuses symlinked destination assets"
+  fi
+  grep -F 'Refusing to write symlinked OpenCode asset' "$TMP_DIR/package-symlink-dest.out" >/dev/null || fail "package installer reports symlinked destination asset"
+  SYMLINK_ROOT_CONFIG_DIR="$TMP_DIR/package-symlink-root-config"
+  mkdir -p "$SYMLINK_ROOT_CONFIG_DIR" "$TMP_DIR/package-symlink-root-target"
+  ln -s "$TMP_DIR/package-symlink-root-target" "$SYMLINK_ROOT_CONFIG_DIR/.autoship"
+  if OPENCODE_CONFIG_DIR="$SYMLINK_ROOT_CONFIG_DIR" node dist/cli.js install >"$TMP_DIR/package-symlink-root.out" 2>&1; then
+    fail "package installer refuses symlinked .autoship root"
+  fi
+  grep -F 'Refusing to write symlinked OpenCode asset root' "$TMP_DIR/package-symlink-root.out" >/dev/null || fail "package installer reports symlinked .autoship root"
+  ASSET_SYMLINK_REPO="$TMP_DIR/package-asset-symlink-repo"
+  cp -R . "$ASSET_SYMLINK_REPO"
+  rm -rf "$ASSET_SYMLINK_REPO/hooks"
+  ln -s "$TMP_DIR" "$ASSET_SYMLINK_REPO/hooks"
+  if OPENCODE_CONFIG_DIR="$TMP_DIR/package-asset-symlink-config" node "$ASSET_SYMLINK_REPO/dist/cli.js" install >"$TMP_DIR/package-symlink-src.out" 2>&1; then
+    fail "package installer refuses symlinked package assets"
+  fi
+  grep -F 'Refusing to copy symlinked package asset' "$TMP_DIR/package-symlink-src.out" >/dev/null || fail "package installer reports symlinked package asset"
+  PACK_SYMLINK_REPO="$TMP_DIR/package-pack-symlink-repo"
+  cp -R . "$PACK_SYMLINK_REPO"
+  rm "$PACK_SYMLINK_REPO/INSTALL.md"
+  ln -s README.md "$PACK_SYMLINK_REPO/INSTALL.md"
+  if (cd "$PACK_SYMLINK_REPO" && bash hooks/opencode/verify-package.sh >/dev/null 2>&1); then
+    fail "package verifier rejects symlinked package entries"
+  fi
   DOCTOR_BIN="$TMP_DIR/doctor-bin"
   mkdir -p "$DOCTOR_BIN"
   cat > "$DOCTOR_BIN/opencode" <<'SH'
@@ -1381,6 +1633,9 @@ SH
   grep -F '[FAIL]' "$TMP_DIR/doctor-fail-1.txt" >/dev/null || fail "doctor prints FAIL checks"
   grep -F '[WARN]' "$TMP_DIR/doctor-fail-1.txt" >/dev/null || fail "doctor prints WARN checks"
   grep -F 'opencode-autoship install' "$TMP_DIR/doctor-fail-1.txt" >/dev/null || fail "doctor failure output includes package install remediation"
+  mkdir -p .autoship
+  printf '{}\n' > .autoship/config.json
+  printf '%s\n' '{"models":[{"id":"opencode/minimax-m2.5-free"}]}' > .autoship/model-routing.json
   printf '%s\n' '{"plugin":["opencode-autoship"]}' > "$DOCTOR_CONFIG/opencode.json"
   mkdir -p "$DOCTOR_CONFIG/.autoship/hooks" "$DOCTOR_CONFIG/.autoship/commands" "$DOCTOR_CONFIG/.autoship/skills"
   printf '{}\n' > "$DOCTOR_CONFIG/.autoship/config.json"

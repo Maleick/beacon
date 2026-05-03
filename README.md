@@ -14,6 +14,7 @@
 </p>
 
 <p align="center">
+  <a href="INSTALL.md">Install</a> •
   <a href="https://autoship.teamoperator.red">Docs</a> •
   <a href="https://github.com/Maleick/AutoShip/wiki">Wiki</a> •
   <a href="#commands">Commands</a> •
@@ -47,6 +48,12 @@ AutoShip is the OpenCode plugin for solo maintainers who want their GitHub issue
 
 ## Installation
 
+To have OpenCode fetch install instructions directly, tell OpenCode:
+
+```text
+Fetch and follow instructions from https://raw.githubusercontent.com/Maleick/AutoShip/refs/tags/v2.2.1/INSTALL.md
+```
+
 Install the CLI globally if you want AutoShip available long-term on your PATH:
 
 ```bash
@@ -68,6 +75,8 @@ Then start the setup wizard inside OpenCode:
 /autoship-setup
 ```
 
+See [`INSTALL.md`](INSTALL.md) for prerequisites, verification, updating, and troubleshooting.
+
 ## Quick Start
 
 ```bash
@@ -81,7 +90,10 @@ opencode-autoship doctor
 # 3. Navigate to your project
 cd ~/Projects/my-project
 
-# 4. Start AutoShip in OpenCode
+# 4. Configure the target repo in OpenCode
+/autoship-setup
+
+# 5. Start AutoShip in OpenCode
 /autoship
 ```
 

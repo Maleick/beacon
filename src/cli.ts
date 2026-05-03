@@ -7,6 +7,7 @@ import {
   copyFile,
   readdir,
   stat,
+  lstat,
   access,
 } from "node:fs/promises";
 import { resolve, join } from "node:path";
@@ -46,16 +47,39 @@ function resolveProjectAutoshipDir(): string {
 }
 
 async function copyDir(src: string, dest: string): Promise<void> {
+  const srcStat = await lstat(src);
+  if (srcStat.isSymbolicLink()) {
+    throw new Error(`Refusing to copy symlinked package asset: ${src}`);
+  }
+  await assertWritablePath(dest, "OpenCode asset");
   await mkdir(dest, { recursive: true });
   const entries = await readdir(src);
   for (const entry of entries) {
     const srcPath = join(src, entry);
     const destPath = join(dest, entry);
+    const linkStat = await lstat(srcPath);
+    if (linkStat.isSymbolicLink()) {
+      throw new Error(`Refusing to copy symlinked package asset: ${srcPath}`);
+    }
     const st = await stat(srcPath);
     if (st.isDirectory()) {
       await copyDir(srcPath, destPath);
     } else {
+      await assertWritablePath(destPath, "OpenCode asset");
       await copyFile(srcPath, destPath);
+    }
+  }
+}
+
+async function assertWritablePath(path: string, label: string): Promise<void> {
+  try {
+    const st = await lstat(path);
+    if (st.isSymbolicLink()) {
+      throw new Error(`Refusing to write symlinked ${label}: ${path}`);
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
     }
   }
 }
@@ -74,6 +98,7 @@ async function loadConfig(path: string): Promise<Config> {
 }
 
 async function saveConfig(path: string, config: Config): Promise<void> {
+  await assertWritablePath(path, "OpenCode config");
   await writeFile(path, JSON.stringify(config, null, 2) + "\n", "utf8");
 }
 
@@ -83,6 +108,8 @@ async function install() {
 
   console.log(`Installing opencode-autoship ${VERSION} to ${configDir}`);
 
+  await assertWritablePath(configDir, "OpenCode config root");
+  await assertWritablePath(autoshipDir, "OpenCode asset root");
   await mkdir(autoshipDir, { recursive: true });
 
   const items = [
@@ -96,14 +123,23 @@ async function install() {
 
   for (const item of items) {
     try {
+      const linkStat = await lstat(item.src);
+      if (linkStat.isSymbolicLink()) {
+        throw new Error(`Refusing to copy symlinked package asset: ${item.src}`);
+      }
       const st = await stat(item.src);
       if (st.isDirectory()) {
         await copyDir(item.src, item.dest);
       } else {
+        await assertWritablePath(item.dest, "OpenCode asset");
         await copyFile(item.src, item.dest);
       }
-    } catch {
-      console.warn(`Warning: ${item.src} not found, skipping`);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        console.warn(`Warning: ${item.src} not found, skipping`);
+        continue;
+      }
+      throw error;
     }
   }
 

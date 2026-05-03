@@ -139,7 +139,7 @@ EOF
 }
 
 base_ref_for_workspace() {
-  for ref in origin/master origin/main master main HEAD~1; do
+  for ref in origin/master origin/main HEAD~1 master main; do
     if git rev-parse --verify "$ref" >/dev/null 2>&1; then
       printf '%s\n' "$ref"
       return 0
@@ -150,44 +150,85 @@ base_ref_for_workspace() {
 
 auto_commit_workspace_changes() {
   local issue_key="$1"
+  local workspace_root
   if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     return 0
   fi
+  workspace_root="$(git rev-parse --show-toplevel)"
 
-  if git diff --quiet && git diff --cached --quiet && [[ -z "$(git ls-files --others --exclude-standard)" ]]; then
+  if git -C "$workspace_root" diff --quiet && git -C "$workspace_root" diff --cached --quiet && [[ -z "$(git -C "$workspace_root" ls-files --others --exclude-standard)" ]]; then
     return 0
   fi
 
-  git add -A
-  if git diff --cached --quiet; then
+  non_runtime_status_paths "$workspace_root" | while IFS= read -r path; do
+    git -C "$workspace_root" add -A -- "$path"
+  done
+  if git -C "$workspace_root" diff --cached --quiet; then
     return 0
   fi
 
-  git \
+  git -C "$workspace_root" \
     -c user.name="AutoShip" \
     -c user.email="autoship@local" \
     commit -m "autoship: ${issue_key} auto-commit" >> AUTOSHIP_RUNNER.log 2>&1
 }
 
-has_non_runtime_changes() {
-  git status --porcelain | while IFS= read -r line; do
+is_test_path() {
+  case "$1" in
+    tests/*|test/*|*/tests/*|*/test/*|__tests__/*|*/__tests__/*|*.test.*|*.spec.*|*_test.*|*.snap|snapshots/*|*/snapshots/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+is_runtime_path() {
+  case "$1" in
+    AUTOSHIP_PROMPT.md|AUTOSHIP_RESULT.md|AUTOSHIP_RUNNER.log|AUTOSHIP_VERIFICATION.log|BLOCKED_REASON.txt|model|role|routing-log.txt|started_at|status|worker.pid|target-isolated|target-isolated/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+non_runtime_status_paths() {
+  local workspace_root="$1"
+  git -C "$workspace_root" status --porcelain | while IFS= read -r line; do
     path="${line#???}"
     case "$line" in R*|C*) path="${path#* -> }" ;; esac
-    case "$path" in
-      AUTOSHIP_PROMPT.md|AUTOSHIP_RESULT.md|AUTOSHIP_RUNNER.log|AUTOSHIP_VERIFICATION.log|BLOCKED_REASON.txt|model|role|routing-log.txt|started_at|status|worker.pid|target-isolated|target-isolated/*) ;;
-      *) printf '%s\n' "$path" ;;
-    esac
-  done | grep -q .
+    if ! is_runtime_path "$path"; then
+      printf '%s\n' "$path"
+    fi
+  done
+}
+
+has_non_runtime_changes() {
+  local workspace_root
+  workspace_root="$(git rev-parse --show-toplevel)"
+  non_runtime_status_paths "$workspace_root" | grep -q .
+}
+
+production_additions_count() {
+  local base_ref="$1"
+  local count=0 file
+  while IFS= read -r file; do
+    [[ -n "$file" ]] || continue
+    if ! is_test_path "$file" && ! is_runtime_path "$file"; then
+      count=$((count + 1))
+    fi
+  done < <(git diff --name-only "$base_ref"...HEAD 2>/dev/null || git diff --name-only "$base_ref" HEAD 2>/dev/null)
+  printf '%s\n' "$count"
 }
 
 salvage_truncated_worker() {
   local issue_key="$1"
   local repo_root="$2"
-  local current=""
+  local current="" base_ref="" prod_changes="0"
   [[ -f status ]] && current=$(tr -d '[:space:]' < status)
   case "$current" in COMPLETE|BLOCKED|STUCK) return 0 ;; esac
   git rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
-  has_non_runtime_changes || return 1
+  if ! has_non_runtime_changes; then
+    base_ref=$(base_ref_for_workspace || true)
+    [[ -n "$base_ref" ]] || return 1
+    prod_changes=$(production_additions_count "$base_ref")
+    [[ "$prod_changes" != "0" ]] || return 1
+  fi
   auto_commit_workspace_changes "$issue_key"
   if [[ ! -s AUTOSHIP_RESULT.md ]]; then
     {
@@ -198,25 +239,6 @@ salvage_truncated_worker() {
   echo "COMPLETE" > status
   autoship_capture_failure salvaged_truncation "$issue_key" "error_summary=worker exited without terminal status but non-runtime changes were committed"
   return 0
-}
-
-is_test_path() {
-  case "$1" in
-    tests/*|test/*|*/tests/*|*/test/*|__tests__/*|*/__tests__/*|*.test.*|*.spec.*|*_test.*|*.snap|snapshots/*|*/snapshots/*) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-production_additions_count() {
-  local base_ref="$1"
-  local count=0 file
-  while IFS= read -r file; do
-    [[ -n "$file" ]] || continue
-    if ! is_test_path "$file"; then
-      count=$((count + 1))
-    fi
-  done < <(git diff --name-only "$base_ref"...HEAD 2>/dev/null || git diff --name-only "$base_ref" HEAD 2>/dev/null)
-  printf '%s\n' "$count"
 }
 
 reject_tests_only_complete() {

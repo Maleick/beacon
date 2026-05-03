@@ -60,6 +60,28 @@ implementation_changes() {
   done
 }
 
+base_ref_for_worktree() {
+  for ref in origin/main origin/master HEAD~1 main master; do
+    if git -C "$WORKTREE_PATH" rev-parse --verify "$ref" >/dev/null 2>&1; then
+      printf '%s\n' "$ref"
+      return 0
+    fi
+  done
+  return 1
+}
+
+committed_implementation_changes() {
+  local base_ref path
+  base_ref=$(base_ref_for_worktree || true)
+  [[ -n "$base_ref" ]] || return 0
+  while IFS= read -r path; do
+    [[ -n "$path" ]] || continue
+    if ! is_runtime_artifact "$path"; then
+      printf '%s\n' "$path"
+    fi
+  done < <(git -C "$WORKTREE_PATH" diff --name-only "$base_ref"...HEAD 2>/dev/null || git -C "$WORKTREE_PATH" diff --name-only "$base_ref" HEAD 2>/dev/null || true)
+}
+
 if [[ ! -d "$WORKTREE_PATH" ]]; then
   echo "VERDICT: FAIL - worktree missing"
   exit 1
@@ -87,7 +109,8 @@ case "$REAL_RESULT" in
 esac
 
 CHANGED_PATHS=$(implementation_changes)
-if [[ -z "$CHANGED_PATHS" ]]; then
+COMMITTED_PATHS=$(committed_implementation_changes)
+if [[ -z "$CHANGED_PATHS" && -z "$COMMITTED_PATHS" ]]; then
   echo "VERDICT: FAIL - git diff is empty"
   exit 1
 fi
@@ -118,12 +141,14 @@ fi
 
 (
   cd "$WORKTREE_PATH"
-  while IFS= read -r path; do
-    [[ -n "$path" ]] || continue
-    git add -- "$path"
-  done <<< "$CHANGED_PATHS"
-  if ! git diff --cached --quiet; then
-    git commit -m "$TITLE" -m "Closes #$ISSUE_NUMBER" -m "Dispatched by AutoShip."
+  if [[ -n "$CHANGED_PATHS" ]]; then
+    while IFS= read -r path; do
+      [[ -n "$path" ]] || continue
+      git add -- "$path"
+    done <<< "$CHANGED_PATHS"
+    if ! git diff --cached --quiet; then
+      git commit -m "$TITLE" -m "Closes #$ISSUE_NUMBER" -m "Dispatched by AutoShip."
+    fi
   fi
 )
 

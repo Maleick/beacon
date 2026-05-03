@@ -23,7 +23,7 @@ get_cpu_pct() {
     cpu_pct=$(awk "BEGIN {printf \"%.0f\", 100 * (1 - ($idle2 - $idle1) / ($total2 - $total1))}")
   fi
   # Fallback: try ps or vmstat
-  if [[ -z "$cpu_pct" && command -v vmstat >/dev/null 2>&1 ]]; then
+  if [[ -z "$cpu_pct" ]] && command -v vmstat >/dev/null 2>&1; then
     cpu_pct=$(vmstat 1 2 2>/dev/null | tail -1 | awk '{print 100 - $15}')
   fi
   printf '%s\n' "${cpu_pct:-0}"
