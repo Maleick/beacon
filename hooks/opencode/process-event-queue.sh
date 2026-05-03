@@ -80,6 +80,12 @@ ensure_array_file() {
 }
 
 event_key() {
+  local event_type
+  event_type=$(jq -r 'type' <<< "$1" 2>/dev/null || printf 'invalid')
+  if [[ "$event_type" != "object" ]]; then
+    printf 'malformed:%s\n' "$1" | shasum | awk '{print $1}'
+    return 0
+  fi
   jq -c '[
     (.type // ""),
     (.issue // ""),
@@ -109,6 +115,24 @@ current_state() {
 
 issue_number() {
   printf '%s' "${1#issue-}"
+}
+
+valid_issue_key() {
+  [[ "$1" =~ ^issue-[0-9]+$ ]]
+}
+
+workspace_for_issue() {
+  local issue="$1"
+  local workspace real_workspaces real_workspace
+  valid_issue_key "$issue" || return 1
+  workspace="$WORKSPACES_DIR/$issue"
+  [[ -d "$workspace" ]] || return 1
+  real_workspaces="$(cd "$WORKSPACES_DIR" && pwd -P)"
+  real_workspace="$(cd "$workspace" && pwd -P)"
+  case "$real_workspace" in
+    "$real_workspaces"/*) printf '%s\n' "$workspace" ;;
+    *) return 1 ;;
+  esac
 }
 
 issue_title() {
@@ -145,10 +169,10 @@ discover_test_command() {
 
 run_verification() {
   local issue="$1"
-  local workspace="$WORKSPACES_DIR/$issue"
+  local workspace
   local test_command
 
-  [[ -d "$workspace" ]] || return 2
+  workspace=$(workspace_for_issue "$issue") || return 2
 
   test_command=$(discover_test_command)
   if bash "$SCRIPT_DIR/verify-result.sh" "$issue" "$workspace" "$test_command" >/dev/null 2>&1; then
@@ -160,7 +184,8 @@ run_verification() {
 
 generate_pr_body() {
   local issue="$1"
-  local workspace="$WORKSPACES_DIR/$issue"
+  local workspace
+  workspace=$(workspace_for_issue "$issue") || return 1
   local result_path="$workspace/AUTOSHIP_RESULT.md"
   local body_path="$workspace/AUTOSHIP_PR_BODY.md"
   local number
@@ -178,7 +203,8 @@ generate_pr_body() {
 
 create_verified_pr() {
   local issue="$1"
-  local workspace="$WORKSPACES_DIR/$issue"
+  local workspace
+  workspace=$(workspace_for_issue "$issue") || return 1
   local body_path="$workspace/AUTOSHIP_PR_BODY.md"
   local number title labels pr_title pr_url branch
 
@@ -193,14 +219,18 @@ create_verified_pr() {
 
   generate_pr_body "$issue"
 
-  git -C "$workspace" add -A -- . ":!.autoship"
-  if git -C "$workspace" diff --cached --quiet; then
-    return 1
-  fi
-  git -C "$workspace" commit -m "$pr_title
+  if [[ -n "$(git -C "$workspace" status --porcelain -- . ":!.autoship" 2>/dev/null)" ]]; then
+    git -C "$workspace" add -A -- . ":!.autoship"
+    if ! git -C "$workspace" diff --cached --quiet; then
+      git -C "$workspace" \
+        -c user.name="AutoShip" \
+        -c user.email="autoship@local" \
+        commit -m "$pr_title
 
 Closes #$number
 Dispatched by AutoShip." >/dev/null
+    fi
+  fi
 
   pr_url=$(cd "$workspace" && gh pr create \
     --title "$pr_title" \
@@ -261,20 +291,20 @@ process_event() {
 
   case "$type" in
     blocked)
-      [[ -n "$issue" ]] || return 1
+      valid_issue_key "$issue" || return 1
       apply_state_once "$issue" set-blocked blocked
       ;;
     stuck)
-      [[ -n "$issue" ]] || return 1
+      valid_issue_key "$issue" || return 1
       apply_state_once "$issue" set-stuck stuck
       ;;
     verify)
-      [[ -n "$issue" ]] || return 1
+      valid_issue_key "$issue" || return 1
       apply_state_once "$issue" set-verifying verifying
       verify_and_create_pr "$issue"
       ;;
     force_dispatch)
-      [[ -n "$issue" ]] || return 1
+      valid_issue_key "$issue" || return 1
       local state number task_type
       state=$(current_state "$issue")
       case "$state" in
@@ -293,6 +323,22 @@ process_event() {
   esac
 }
 
+is_malformed_event() {
+  local event="$1"
+  local type issue
+  [[ "$(jq -r 'type' <<< "$event" 2>/dev/null || printf 'invalid')" == "object" ]] || return 0
+  type=$(jq -r '.type // empty' <<< "$event")
+  issue=$(jq -r '.issue // empty' <<< "$event")
+
+  case "$type" in
+    blocked|stuck|verify|force_dispatch)
+      valid_issue_key "$issue" || return 0
+      ;;
+  esac
+
+  return 1
+}
+
 ensure_array_file "$EVENT_QUEUE"
 ensure_array_file "$PROCESSED_EVENTS"
 
@@ -306,7 +352,10 @@ while IFS= read -r event; do
     continue
   fi
 
-  if process_event "$event"; then
+  if is_malformed_event "$event"; then
+    printf 'Dropping malformed event: %s\n' "$event" >&2
+    mark_processed "$key"
+  elif process_event "$event"; then
     mark_processed "$key"
   else
     next_remaining=$(make_tmp)

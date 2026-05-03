@@ -2,6 +2,10 @@
 set -euo pipefail
 
 PR_NUMBER="${1:?PR number required}"
+if [[ ! "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+  echo "Error: PR number must be numeric" >&2
+  exit 1
+fi
 labels=$(gh pr view "$PR_NUMBER" --json labels --jq '[.labels[].name] | join(",")')
 if ! grep -Eq '(^|,)autoship:auto-merge(,|$)' <<< "$labels"; then
   echo "PR #$PR_NUMBER is not labeled autoship:auto-merge"

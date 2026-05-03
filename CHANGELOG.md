@@ -1,5 +1,24 @@
 # Changelog
 
+## v2.2.1
+
+- Add root and OpenCode-readable install entrypoints for agent-assisted installs.
+- Link the raw install guide from README and OpenCode install docs.
+- Align release metadata and lockfile handling for npm package publishing.
+- Harden package verification and reviewed shell entrypoints before release.
+
+## v2.2.0
+
+- Add burndown policy profiles, overlap-aware planning, enriched worker prompts, and policy hazard verification.
+- Add runtime metrics, circuit breaker, retry backoff, resource monitoring, A/B testing, and auto-documentation hooks.
+- Harden runner salvage, cargo isolation, model routing defaults, event handling, and macOS-compatible locking.
+
+## v2.1.0
+
+- Harden issue records, quota guard inputs, create-pr result paths, and anti-flake retry handling.
+- Preserve verified PR staging while excluding runtime `.autoship` state.
+- Refresh release publishing guidance.
+
 ## v2.0.11
 
 - Consolidate shared runtime configuration lookup for worker concurrency across dispatch, runner, and status scripts.
