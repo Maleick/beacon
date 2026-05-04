@@ -89,9 +89,13 @@ TITLE=$(gh issue view "$ISSUE_NUM" --repo "$REPO" --json title --jq '.title' 2>/
 BODY=$(gh issue view "$ISSUE_NUM" --repo "$REPO" --json body --jq '.body' 2>/dev/null || echo "")
 LABELS=$(gh issue view "$ISSUE_NUM" --repo "$REPO" --json labels --jq '[.labels[].name] | join(",")' 2>/dev/null || echo "")
 
-# Determine model using routing config
-MODEL_OUTPUT="$(bash "$SCRIPT_DIR/model-router.sh" dispatch_with_routing code simple 2>/dev/null || echo "kimi-k2.6")"
-MODEL="$(echo "$MODEL_OUTPUT" | tail -1)"
+# Determine model using routing config or override
+if [[ -n "$MODEL_OVERRIDE" ]]; then
+  MODEL="$MODEL_OVERRIDE"
+else
+  MODEL_OUTPUT="$(bash "$SCRIPT_DIR/model-router.sh" dispatch_with_routing code simple 2>/dev/null || echo "kimi-k2.6")"
+  MODEL="$(echo "$MODEL_OUTPUT" | tail -1)"
+fi
 ROLE="implementer"
 
 # Log model selection
