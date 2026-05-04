@@ -149,6 +149,9 @@ $BODY
 - Implement per acceptance criteria.
 - Run project checks: cargo fmt --check, cargo clippy, cargo test (macOS-safe only).
 - Commit with conventional format: "feat|fix|docs|refactor(scope): description (#$ISSUE_NUM)".
+- **PUSH branch to origin**: `git push origin autoship/issue-$ISSUE_NUM`
+- **CREATE PR via gh CLI**: `gh pr create --title "..." --body "Closes #$ISSUE_NUM" --base master --head autoship/issue-$ISSUE_NUM`
+- **CLOSE issue**: `gh issue close $ISSUE_NUM --reason completed`
 - Write HERMES_RESULT.md in worktree root with: status (COMPLETE/BLOCKED/STUCK), files changed, validation results.
 - Update $WORKSPACE_PATH/status to COMPLETE, BLOCKED, or STUCK.
 - If stuck at minute 8, stop and report STUCK with exact status.
