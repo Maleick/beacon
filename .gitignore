@@ -29,7 +29,6 @@ Thumbs.db
 *.bak
 
 # AutoShip runtime artifacts (generated per-run, not source)
-.autoship/
 AUTOSHIP_RESULT.md
 AUTOSHIP_PROMPT.md
 
@@ -41,3 +40,4 @@ AUTOSHIP_PROMPT.md
 credentials.json
 service-account*.json
 CLAUDE.md
+# AutoShip runtime state (not ignored — contains model routing)
