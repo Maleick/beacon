@@ -1,398 +1,422 @@
-# AutoResearch Findings — Hermes Runtime Hooks Audit
+# AutoShip AutoResearch Findings — Kira Vanguard Audit
 
 **Date:** 2026-05-04  
-**Analyzer:** big-pickle (opencode-zen/autoresearch)  
-**Scope:** `hooks/hermes/*.sh`, `config/model-routing.json`, Hermes↔OpenCode integration points  
-**Focus areas:** Hook robustness, error handling gaps, missing validation, documentation gaps
+**Researcher:** Kira Vanguard  
+**Scope:** AutoShip orchestration plugin — Hermes compatibility, hook robustness, model routing, error handling, documentation gaps  
+**Methodology:** Static code analysis of hooks (opencode/ + hermes/), config files, state management, and runtime artifacts. No live issues were available for burn-down.
 
 ---
 
 ## Executive Summary
 
-The Hermes runtime hooks (10 scripts) are functional but contain **27 distinct issues** across four categories. **6 items are high-severity** (likely to cause runtime failures or data loss), **13 are medium-severity** (edge cases or fragility), and **8 are low-severity** (polish/documentation).
+AutoShip is a mature multi-runtime orchestration system with strong OpenCode integration and well-structured shell hooks. However, **critical gaps exist in Hermes runtime integration**, model routing consistency, error propagation, and documentation accuracy. Several hooks contain latent bugs that would surface under load or on macOS/BSD systems. No `atomic:ready` issues were found in the target repo, so burn-down was not triggered.
 
-The most critical problems:
-1. The `delegate_task` pathway in `runner.sh` is **stub-only** (echo + status write, no actual task execution)
-2. `dispatch.sh` silently continues when `create-worktree.sh` fails (shell substring doesn't inherit `set -e`)
-3. Race conditions in workspace status file reads/writes
-4. Hardcoded paths (`/Users/maleick/Projects/...`) create brittleness
-5. Complete absence of Hermes-specific developer/operator documentation
-6. `model-router.sh` has a no-op availability checker rendering fallback tiers unreachable
+**Severity Distribution:**
+- 🔴 **Critical:** 4 findings
+- 🟡 **High:** 5 findings
+- 🟢 **Medium:** 4 findings
+- 🔵 **Low:** 3 findings
 
 ---
 
-## 1. Hook Robustness (10 issues)
+## 🔴 Critical Findings
 
-### HIGH: Delegated task pathway is incomplete (runner.sh:90-113)
+### C1. Hermes `model-router.sh` Reads Wrong Config File
+
+**File:** `hooks/hermes/model-router.sh`  
+**Line:** 10
+
+```bash
+ROUTING_CONFIG="${AUTOSHIP_ROOT}/config/model-routing.json"
+```
+
+**Problem:** The Hermes model router hardcodes `config/model-routing.json`, but the OpenCode setup wizard writes to `.autoship/model-routing.json` (see `hooks/opencode/setup.sh:6`). The `config/model-routing.json` file exists and contains a *different* schema (tier-based: `zen_free`, `go_paid`, `hermes_fallback`) while `.autoship/model-routing.json` contains the live OpenCode model pool with `roles`, `pools`, and `models` arrays.
+
+**Impact:** When `dispatch.sh` calls `model-router.sh`, it reads the static tier config and returns models like `opencode-zen/big-pickle`. However, the Hermes runner never actually uses this model — it only writes it to a file and then relies on `delegate_task` or `hermes chat` with no `--model` flag. The model selection is effectively **dead code** for the execution path.
+
+**Fix:** Unify routing config sources or make `model-router.sh` read `.autoship/model-routing.json` with a fallback to `config/model-routing.json`.
+
+---
+
+### C2. Hermes `runner.sh` `delegate_task` Is a No-Op Stub
 
 **File:** `hooks/hermes/runner.sh`  
-**Lines:** 90–113  
-**Severity:** HIGH  
-**Description:** When `HERMES_SESSION_ID` is set, the script writes `DELEGATED` status, echoes instructions to stdout, and exits. No actual `delegate_task` call is made. The 22-line block is effectively a no-op that leaves the workspace in a `DELEGATED` state indefinitely — no subsequent code path resolves it. Subsequent `runner.sh` invocations will skip it because DELEGATED is not QUEUED or RUNNING.  
-**Impact:** The Hermes-in-Hermes (delegation) use case is completely non-functional.  
-**Recommendation:** Implement `delegate_task` invocation or remove the code path. At minimum, remove the stale comment block and fail with a clear error.
+**Lines:** 103–125
 
-### HIGH: `set -e` doesn't trap substitution failures (dispatch.sh:118)
+When `HERMES_SESSION_ID` is set, the runner prints:
+```
+DELEGATE_TASK_READY: issue-N
+Worktree: ...
+Prompt: ...
+Parent agent should now call delegate_task for issue-N
+```
+
+Then it writes `DELEGATED` to status and **exits 0**.
+
+**Problem:** The runner does **not** actually invoke `delegate_task`. It assumes the parent Hermes agent will poll the filesystem, detect `DELEGATED` status, read `HERMES_PROMPT.md`, and call `delegate_task`. There is no such polling loop in any hook. In a cronjob context, the task is silently abandoned after the first run.
+
+**Impact:** Hermes dispatch via cronjob is **non-functional**. The issue remains in `DELEGATED` state forever unless a human manually calls `delegate_task`.
+
+**Fix:** Implement actual `delegate_task` invocation in `runner.sh` when `HERMES_SESSION_ID` is present, or document that Hermes dispatch requires a separate polling daemon.
+
+---
+
+### C3. `update-state.sh` `manage_labels()` Uses Brittle `gh label list` + `grep`
+
+**File:** `hooks/update-state.sh`  
+**Lines:** 91–101
+
+```bash
+if gh label list --repo "$repo_slug" --json name --jq ".[].name" 2>/dev/null | grep -q "^${old_label}$"; then
+  gh issue edit "$issue_id" --repo "$repo_slug" --remove-label "$old_label" 2>/dev/null || true
+fi
+```
+
+**Problem:** `gh label list --json name --jq ".[].name"` outputs one label per line. `grep -q "^${old_label}$"` is an exact match, but if the label contains regex metacharacters (e.g., `autoship:in-progress`), `grep` treats `:` as a regex atom. While `:` is not a special regex character, labels with `+`, `*`, `?`, `[`, `]`, `\`, `^`, `$`, `.` would break. More importantly, **the `grep` is unnecessary** — `gh issue edit --remove-label` is idempotent and returns 0 even if the label is not present. The extra API call to `gh label list` wastes quota.
+
+**Impact:** Wasted GitHub API quota on every state transition. Potential regex misbehavior with exotic labels.
+
+**Fix:** Remove the `gh label list` check. Just run `gh issue edit --remove-label` / `--add-label` directly with `|| true`.
+
+---
+
+### C4. `create-worktree.sh` Removes `.autoship/` Runtime Files from Worktree
+
+**File:** `hooks/opencode/create-worktree.sh`  
+**Lines:** 76–85
+
+```bash
+rm -f \
+  "$WORKSPACE/AUTOSHIP_PROMPT.md" \
+  "$WORKSPACE/AUTOSHIP_RESULT.md" \
+  ...
+```
+
+**Problem:** After `git worktree add`, the script deletes runtime files from the *new worktree directory*. However, `AUTOSHIP_PROMPT.md` and `AUTOSHIP_RESULT.md` are meant to be written *into* the worktree by dispatch/runner. If a previous run left them in the main repo (e.g., due to a bug), they get cleaned. But the script also deletes `model`, `started_at`, and `status` — which are workspace metadata that should persist in `.autoship/workspaces/issue-N/`, not in the worktree itself.
+
+**Impact:** If a hook writes metadata to the worktree root instead of `.autoship/workspaces/`, it gets wiped on the next `create-worktree.sh` call for the same issue key. This is a latent data-loss bug.
+
+**Fix:** Ensure all workspace metadata lives in `.autoship/workspaces/issue-N/` and never in the worktree root. Add a check that refuses to create a worktree if `.autoship/workspaces/issue-N/` already has `RUNNING` status.
+
+---
+
+## 🟡 High Findings
+
+### H1. `runner.sh` Timeout Command Uses `perl` Fallback with Broken Syntax
+
+**File:** `hooks/hermes/runner.sh`  
+**Lines:** 133–148
+
+```bash
+if [[ "$(uname)" == "Darwin" ]]; then
+  if command -v gtimeout &>/dev/null; then
+    TIMEOUT_CMD="gtimeout"
+  elif command -v perl &>/dev/null; then
+    perl_timeout() { perl -e 'alarm shift; exec @ARGV' -- "$@"; }
+    TIMEOUT_CMD="perl_timeout"
+  else
+    echo "Warning: no timeout command found ..."
+    TIMEOUT_CMD=""
+  fi
+fi
+```
+
+**Problem:** The `perl_timeout` function definition is inside a subshell (the `elif` branch). When `TIMEOUT_CMD="perl_timeout"` is used later as `$TIMEOUT_CMD 600 ...`, the function is **not exported** and will not be available in the command position. Bash cannot call a function via variable expansion in command position unless it's exported with `export -f`, which is not done.
+
+**Impact:** On macOS without `gtimeout`, the timeout silently fails and the worker runs indefinitely.
+
+**Fix:** Export the function: `export -f perl_timeout`. Or better, use a wrapper script instead of a function.
+
+---
+
+### H2. `select-model.sh` Has Duplicate `if [[ "$LOG" == true ]]` Block
+
+**File:** `hooks/opencode/select-model.sh`  
+**Lines:** 64–165
+
+The script defines `JQ_DEFS` and then has:
+```bash
+if [[ "$LOG" == true ]]; then
+  # ... huge jq command ...
+  exit 0
+fi
+
+# Then later:
+if [[ "$LOG" == true ]]; then
+  # ... another huge jq command ...
+  exit 0
+fi
+
+jq -r ... # non-log path
+```
+
+**Problem:** The first `if [[ "$LOG" == true ]]` block (lines ~64–112) is **unreachable** because the second block (lines ~114–165) shadows it. The first block uses `--slurpfile history "$HISTORY_FILE" --slurpfile circuit "$CIRCUIT_FILE"` which are not defined in the first block's scope (they are defined later). This is a copy-paste error.
+
+**Impact:** The `--log` flag produces output from the second block, but the first block's richer routing log format is never executed. Model selection logging is incomplete.
+
+**Fix:** Remove the first unreachable `if [[ "$LOG" == true ]]` block (lines 64–112).
+
+---
+
+### H3. `dispatch.sh` (Hermes) Does Not Validate `HERMES_TARGET_REPO` Exists
 
 **File:** `hooks/hermes/dispatch.sh`  
-**Line:** 118  
-**Severity:** HIGH  
-**Description:**  
+**Lines:** 83–88
+
 ```bash
-FULL_WORKSPACE_PATH=$(bash "$SCRIPT_DIR/../opencode/create-worktree.sh" "$ISSUE_KEY" "autoship/issue-${ISSUE_NUM}")
+TITLE=$(gh issue view "$ISSUE_NUM" --repo "$REPO" --json title --jq '.title' 2>/dev/null || echo "Issue $ISSUE_NUM")
 ```
-In Bash, `set -e` does **not** propagate from within `$()` command substitution. If `create-worktree.sh` fails (non-zero exit), `FULL_WORKSPACE_PATH` is empty but the script continues — lines 119–123 write workspace files assuming success.  
-**Same issue on line 160** (`pr-title.sh` inside substitution).  
-**Impact:** Corruption of workspace state; queued workspace with empty worktree path.  
-**Recommendation:** Add `|| { echo "create-worktree.sh failed" >&2; exit 1; }` after the substitution.
 
-### MEDIUM: Workspace status file race (runner.sh:52-59, 133-145)
+**Problem:** If `HERMES_TARGET_REPO` is set to a non-existent repo or the user lacks access, `gh issue view` fails silently and the title becomes `"Issue $ISSUE_NUM"`. The dispatch proceeds with a stub title, creating a PR with a meaningless title later.
 
-**File:** `hooks/hermes/runner.sh`  
-**Lines:** 52–59, 133–145  
-**Severity:** MEDIUM  
-**Description:** Multiple concurrent `runner.sh` invocations read/write the same `status` file without locking. Between the status check (line 52) and the `printf 'RUNNING\n'` (line 59), another process could change the state. Similarly, after the timeout block, status is re-read without atomicity.  
-**Impact:** Double-dispatch of the same issue; status inconsistency.  
-**Recommendation:** Use `flock` (as `update-state.sh` does) or a compare-and-swap pattern for status transitions.
+**Impact:** Poor PR quality. No early failure for bad config.
 
-### MEDIUM: YAML parsing via grep/awk is fragile (runner.sh:34-39, dispatch.sh:55-61)
+**Fix:** Add explicit validation:
+```bash
+if ! gh repo view "$REPO" >/dev/null 2>&1; then
+  echo "Error: cannot access repo $REPO" >&2
+  exit 1
+fi
+```
 
-**File:** `hooks/hermes/runner.sh:34-39`, `dispatch.sh:55-61`  
-**Severity:** MEDIUM  
-**Description:** Parsing YAML with `grep 'max_concurrent_children' ~/.hermes/config.yaml | awk '{print $2}'` breaks on:
-- Indented config values (common in YAML)
-- Comments before the key
-- Alternative key names (`max_children`, `concurrent`)
-- Quoted vs unquoted values
-- Keys with same name in different sections  
-**Impact:** MAX defaults silently to 3 even when user has configured a higher value.  
-**Recommendation:** Use `yq` (YAML processor) if available, or document the exact YAML format expected.
+---
 
-### MEDIUM: Round-robin wraps incorrectly on empty model list (model-router.sh:38-63)
+### H4. `auto-prune.sh` Uses `ls -1td ... | tail -r` Which Is macOS-Only
 
-**File:** `hooks/hermes/model-router.sh`  
-**Lines:** 38–63  
-**Severity:** MEDIUM  
-**Description:** `get_model_from_tier` extracts models with `jq -r ".tiers[$tier_idx].models[].id"`. If the tier has **no models** or `jq` produces no output, the for loop never runs, `next_model` stays empty, and the wrap-around `head -1` on an empty string returns nothing. Callers receive an empty model ID.  
-**Impact:** Silent dispatch with empty model ID; downstream failures in `dispatch.sh`.  
-**Recommendation:** Validate `models` is non-empty before entering the round-robin loop. Return a hardcoded fallback if empty.
+**File:** `hooks/hermes/auto-prune.sh`  
+**Lines:** 147–148, 178–179
 
-### MEDIUM: `dispatch_with_routing` ignores tier param entirely (model-router.sh:77-106)
+```bash
+for wt in $(ls -1td "$WORKTREE_BASE"/issue-* 2>/dev/null | tail -r); do
+```
 
-**File:** `hooks/hermes/model-router.sh`  
-**Lines:** 77–106  
-**Severity:** MEDIUM  
-**Description:** The `dispatch_with_routing` function accepts `task_type` and `complexity` parameters, uses `complexity` to set `tier` variable, but **then ignores it** — always calls `get_model_from_tier "zen_free"` regardless of complexity value. The `go_paid` tier is only reached via the fallback chain, not directly.  
-**Impact:** Complex tasks may be mis-routed to free tier first (by design? but contradicts the parameter semantics).  
-**Recommendation:** Either remove the `complexity` parameter or actually use it to select the initial tier.
+**Problem:** `tail -r` reverses lines. This is a **BSD/macOS-specific** flag. On Linux, `tail` does not have `-r`. The script will fail on Linux with `tail: invalid option -- 'r'`.
 
-### MEDIUM: Worktree path with spaces breaks parsing (cleanup-worktrees.sh:82)
+**Impact:** Auto-prune is **non-portable** and will break in CI or Docker (Linux).
+
+**Fix:** Replace with portable `tac` (GNU) or `sort -r`:
+```bash
+ls -1td "$WORKTREE_BASE"/issue-* 2>/dev/null | sort -r
+```
+
+---
+
+### H5. `gh-retry.sh` Does Not Retry on HTTP 401/403 (Rate Limit vs Auth)
+
+**File:** `hooks/opencode/gh-retry.sh`  
+**Lines:** 49–67
+
+The retry logic classifies exit code 1 as retryable unless the output contains `not found|already exists|permission denied|unauthorized`. However, GitHub CLI returns HTTP 401/403 as exit code 1 with messages like `HTTP 401: Bad credentials` or `HTTP 403: API rate limit exceeded`. The latter **should be retried** with backoff, but the script treats it as non-retryable because it contains `unauthorized`/`permission denied`.
+
+**Impact:** Transient rate limits (HTTP 403 with `rate limit exceeded`) cause immediate failure instead of retry.
+
+**Fix:** Distinguish between authentication errors (401, bad credentials) and rate limits (403 with `rate limit` or `quota`). Only skip retry for the former.
+
+---
+
+## 🟢 Medium Findings
+
+### M1. `check.sh` Does Not Check `hooks/hermes/*.sh` Syntax
+
+**File:** `hooks/opencode/check.sh`  
+**Lines:** 87–113
+
+The syntax check iterates over `$HOOKS_DIR/*.sh` and `$HOOKS_DIR/opencode/*.sh`, but **never checks `$HOOKS_DIR/hermes/*.sh`**.
+
+**Impact:** Hermes hook syntax errors are only caught at runtime.
+
+**Fix:** Add:
+```bash
+for script in "$HOOKS_DIR/hermes"/*.sh; do
+  [[ -f "$script" ]] || continue
+  ...
+done
+```
+
+---
+
+### M2. `cleanup-worktrees.sh` Phase 2 `git worktree list` Parsing Is Fragile
 
 **File:** `hooks/hermes/cleanup-worktrees.sh`  
-**Line:** 82  
-**Severity:** MEDIUM  
-**Description:**  
+**Lines:** 85–95
+
 ```bash
-for wt_info in $(git worktree list --porcelain | grep -E "^worktree " | awk '{print $2}')
+for wt_info in $(git worktree list --porcelain 2>/dev/null | grep -E "^worktree " | awk '{print $2}'); do
+  if [[ ! "$wt_info" =~ \.worktrees/issue-[0-9]+$ ]]; then
+    continue
+  fi
 ```
-Word-splitting on spaces will break for any worktree path containing spaces or special characters. `git worktree list --porcelain` outputs one path per line, which could contain spaces.  
-**Impact:** Worktree cleanup fails silently for repos with space-containing paths.  
-**Recommendation:** Use `while IFS= read -r line` with proper parsing of porcelain format.
 
-### MEDIUM: Hardcoded paths create brittleness (post-merge-cleanup.sh, dispatch.sh)
+**Problem:** The `grep -E "^worktree " | awk '{print $2}'` pattern assumes the worktree path does not contain spaces. If `HERMES_TARGET_REPO_PATH` contains spaces (e.g., `/Users/name/My Projects/TextQuest`), `awk '{print $2}'` truncates the path.
 
-**Files:** `post-merge-cleanup.sh:12-16`, `dispatch.sh:52`, `runner.sh:72`  
-**Severity:** MEDIUM  
-**Description:** Multiple scripts hardcode `/Users/maleick/Projects/TextQuest` instead of consistently using `$HERMES_TARGET_REPO_PATH`. `dispatch.sh` line 52 and `runner.sh` line 72 have better patterns (use env var), but `post-merge-cleanup.sh` still hardcodes.  
-**Impact:** Fails for any user who clones repos to a different path.  
-**Recommendation:** Normalize all path references to use `$HERMES_TARGET_REPO_PATH` (or equivalent) with a documented fallback.
+**Impact:** Worktrees with spaces in their path are never cleaned up.
 
-### LOW: `github.com` vs `api.github.com` direct URL (plan-issues.sh:19)
-
-**File:** `hooks/hermes/plan-issues.sh`  
-**Line:** 19  
-**Severity:** LOW  
-**Description:** Uses `curl` to `api.github.com` with `gh auth token` instead of `gh issue list` CLI command. This bypasses `gh` CLI's built-in retry, pagination, and auth handling.  
-**Recommendation:** Use `gh issue list --label "$LABELS" --json ...` instead of raw curl.
-
-### LOW: Label scheme mismatch between post-merge-cleanup and AutoShip (post-merge-cleanup.sh:40)
-
-**File:** `hooks/hermes/post-merge-cleanup.sh`  
-**Line:** 40  
-**Severity:** LOW  
-**Description:** Uses `atomic:ready` / `atomic:complete` labels instead of `autoship:*` labels used by the rest of the system.  
-**Impact:** Labels won't be managed correctly if the repo uses `autoship:*` label scheme.  
-**Recommendation:** Make label names configurable via env vars with AutoShip defaults.
+**Fix:** Use `cut -d' ' -f2-` or a proper while-read loop:
+```bash
+git worktree list --porcelain 2>/dev/null | while IFS= read -r line; do
+  if [[ "$line" =~ ^worktree\ (.+) ]]; then
+    wt_path="${BASH_REMATCH[1]}"
+    ...
+  fi
+done
+```
 
 ---
 
-## 2. Error Handling Gaps (8 issues)
+### M3. `reconcile-state.sh` `cd "$TARGET_REPO"` Is Unconditional After Directory Check
 
-### HIGH: No-op availability checker (model-router.sh:69-74)
+**File:** `hooks/opencode/reconcile-state.sh`  
+**Lines:** 140–142
+
+```bash
+cd "$TARGET_REPO" 2>/dev/null && git worktree prune 2>/dev/null || true
+```
+
+**Problem:** `$TARGET_REPO` is set to `${HERMES_TARGET_REPO_PATH:-$HOME/Projects/TextQuest}`. If the directory does not exist, `cd` fails and `git worktree prune` runs in the AutoShip repo instead. This is harmless but confusing.
+
+**Fix:** Only run `git worktree prune` if the directory exists and is a git repo:
+```bash
+if [[ -d "$TARGET_REPO/.git" ]]; then
+  (cd "$TARGET_REPO" && git worktree prune)
+fi
+```
+
+---
+
+### M4. `verify-result.sh` `run_test_command` Has Overly Restrictive Character Validation
+
+**File:** `hooks/opencode/verify-result.sh`  
+**Lines:** 47–53
+
+```bash
+for part in "${command_parts[@]}"; do
+  if [[ ! "$part" =~ ^[A-Za-z0-9_./:=@%+,-]+$ ]]; then
+    fail "test command contains unsupported characters"
+  fi
+done
+```
+
+**Problem:** The regex rejects valid shell characters like `>`, `|`, `;`, `&`, `"`, `'`, `(`, `)`, `[`, `]`, `{`, `}`, `` ` ``, `$`, `*`, `?`, `~`, `!`. This prevents test commands like `cargo test 2>&1 | tee log.txt` or `bash -c "echo hello"`.
+
+**Impact:** Complex test commands are rejected even when safe.
+
+**Fix:** Remove the character whitelist or replace it with a blacklist of dangerous characters (e.g., `;`, `&`, `|`, `` ` ``, `$()` only if they contain unquoted strings). Alternatively, accept that test commands come from trusted config and skip validation.
+
+---
+
+## 🔵 Low Findings
+
+### L1. `AUTOSHIP.md` Claims OpenCode Is the "Only Worker Runtime"
+
+**File:** `AUTOSHIP.md`  
+**Line:** 6
+
+```yaml
+routing:
+  research: [opencode]
+  docs: [opencode]
+  ...
+```
+
+**Problem:** The front matter and prose claim "OpenCode is the only worker runtime", but the entire `hooks/hermes/` directory and `README.md` describe a Hermes runtime. This is a documentation inconsistency.
+
+**Fix:** Update `AUTOSHIP.md` to acknowledge Hermes as a secondary runtime, or move Hermes docs to a separate file.
+
+---
+
+### L2. `README.md` `max_concurrent` Values Are Out of Sync with Config
+
+**File:** `README.md`  
+**Lines:** ~45–50
+
+The ASCII diagram shows:
+```
+│  WORKER DISPATCH       15 ACTIVE MAX     │
+│  HERMES RUNTIME        3 ACTIVE MAX      │
+```
+
+But `config/model-routing.json` says:
+```json
+"max_concurrent": 10,
+"notes": "max_concurrent reduced from 15 to 10 ..."
+```
+
+And `.autoship/config.json` says:
+```json
+"maxConcurrentAgents": 15
+```
+
+**Impact:** Confusing for operators trying to tune concurrency.
+
+**Fix:** Align all sources to the same value (recommend 10 to match the Hermes delegation bottleneck note).
+
+---
+
+### L3. `model-router.sh` `update_usage_log` Never Called
 
 **File:** `hooks/hermes/model-router.sh`  
-**Lines:** 69–74  
-**Severity:** HIGH  
-**Description:**  
-```bash
-check_model_available() {
-  local model="$1"
-  # This would check rate limits, quota, etc.
-  # For now, assume available
-  return 0
-}
-```
-This function is a stub that **always returns success**. The fallback chain in `dispatch_with_routing` (lines 87–106) will never detect that a model is unavailable, so it will never escalate to `go_paid` or `hermes_fallback` tiers.  
-**Impact:** If `zen_free` models are rate-limited or exhausted, the system will keep trying them forever instead of falling back.  
-**Recommendation:** Implement real availability checks (rate limit headers, quota file, or network test). At minimum, add a configurable retry/cooldown mechanism.
+**Lines:** 127–143
 
-### HIGH: Silent failure when full workspace dir creation fails (dispatch.sh:118-123)
+The `update_usage_log` function is defined and exported, but **no caller in the codebase invokes it**. The `.autoship/usage-log.json` file is referenced in `dispatch.sh` (line 109: `echo "..." >> "$AUTOSHIP_DIR/logs/model-selection.log"`) but the structured usage log is never written.
 
-**File:** `hooks/hermes/dispatch.sh`  
-**Lines:** 118–123  
-**Severity:** HIGH  
-**Description:** As noted in robustness, if `create-worktree.sh` fails, the script proceeds to write `started_at`, `status`, `model`, `role` files and `HERMES_PROMPT.md` into a workspace that may have an incomplete or non-existent worktree. The prompt itself (line 147) references `$FULL_WORKSPACE_PATH` which would be empty.  
-**Recommendation:** Check `FULL_WORKSPACE_PATH` is non-empty and the directory exists before proceeding.
+**Impact:** The round-robin rotation in `get_model_from_tier` always starts from the first model because `last_used` is never updated.
 
-### MEDIUM: `gh issue view` errors silently swallowed (runner.sh:67-78, dispatch.sh:88-90)
-
-**Files:** `runner.sh:67-78`, `dispatch.sh:88-90`  
-**Severity:** MEDIUM  
-**Description:** Multiple `gh issue view` calls use `2>/dev/null || echo ""` fallbacks. Failures (rate limits, network errors, 404s) produce no log entry. Error context is lost.  
-**Impact:** Silent failures when GitHub API is unreachable — may manifest as empty titles or missing labels.  
-**Recommendation:** Log failures to `.autoship/poll.log` or stderr, then fall back.
-
-### MEDIUM: Worktree search fallback doesn't validate git repo (runner.sh:67-68)
-
-**File:** `hooks/hermes/runner.sh`  
-**Lines:** 67–68  
-**Severity:** MEDIUM  
-**Description:**  
-```bash
-if [[ -n "${HERMES_TARGET_REPO_PATH:-}" ]]; then
-  worktree_path=$(git -C "$HERMES_TARGET_REPO_PATH" worktree list --porcelain ...)
-```
-If `HERMES_TARGET_REPO_PATH` is set but is not a valid git repository, `git -C` will error. The error goes to stderr but isn't caught — the fallback loop runs anyway.  
-**Impact:** Unclear error messages; hard to diagnose misconfigured `HERMES_TARGET_REPO_PATH`.  
-**Recommendation:** Check `git -C "$HERMES_TARGET_REPO_PATH" rev-parse --git-dir` first.
-
-### MEDIUM: `gh` operations in cleanup-worktrees.sh not guarded (cleanup-worktrees.sh:93-97)
-
-**File:** `hooks/hermes/cleanup-worktrees.sh`  
-**Lines:** 93–97  
-**Severity:** MEDIUM  
-**Description:** Inside the worktree cleanup loop, `gh issue view` is called for each worktree to check if the issue is still active. If `gh` has auth issues, rate limits, or network failures, it silently returns `[]` fallback, causing worktrees for active issues to be deleted.  
-**Impact:** Potential deletion of active worktrees during GitHub API outages.  
-**Recommendation:** Add a "fail closed" approach — if `gh` errors, skip the worktree (don't delete).
-
-### MEDIUM: Concurrent jq read-modify-write on usage-log.json (model-router.sh:41-44, 110-121)
-
-**File:** `hooks/hermes/model-router.sh`  
-**Lines:** 41–44, 110–121  
-**Severity:** MEDIUM  
-**Description:** The `get_model_from_tier` function reads `usage-log.json` (line 44) and `update_usage_log` writes it (lines 120–121) using a `jq > tmp && mv tmp` pattern without locking. Concurrent model-router.sh invocations can overwrite each other's updates.  
-**Impact:** Round-robin state can diverge; models may be skipped or repeated.  
-**Recommendation:** Use `flock` (same pattern as `update-state.sh`) for usage log writes.
-
-### MEDIUM: `jq` required but no fallback for state operations (runner.sh, dispatch.sh)
-
-**Files:** `runner.sh:156-158`, `dispatch.sh:78-81`  
-**Severity:** MEDIUM  
-**Description:** Multiple scripts use `jq` for state file operations without checking if `jq` is installed. While `model-router.sh` checks for `jq`, `dispatch.sh` and `runner.sh` do not when reading `state.json` or finding running workspaces.  
-**Impact:** Cryptic errors or silent defaults when `jq` is missing.  
-**Recommendation:** Add `jq` availability check with clear error message at the top of each script that uses it.
-
-### LOW: timeout exit code 124 detection is fragile (runner.sh:121)
-
-**File:** `hooks/hermes/runner.sh`  
-**Line:** 121  
-**Severity:** LOW  
-**Description:** The script checks `$exit_code -eq 124` to detect timeout. However, if `hermes chat` itself exits with code 124, this would be a false positive. While unlikely, a more robust approach would compare against the expected timeout duration.  
-**Recommendation:** Store the timeout start time and check elapsed wall-clock time instead, or use a more unique exit code convention.
+**Fix:** Call `update_usage_log "$model"` in `dispatch.sh` after model selection, or remove the unused function.
 
 ---
 
-## 3. Missing Validation (6 issues)
+## Fixes Applied
 
-### MEDIUM: No issue existence validation before worktree creation (dispatch.sh:118)
+No fixes were applied during this research phase. The findings are documented for prioritization and burn-down. The following fixes are recommended in priority order:
 
-**File:** `hooks/hermes/dispatch.sh`  
-**Line:** 118  
-**Severity:** MEDIUM  
-**Description:** The script fetches issue metadata (title, body, labels) at lines 88–90, but never validates the issue actually exists on GitHub before creating the worktree (line 118). If `gh issue view` returns empty, the script still creates a worktree with empty title/body.  
-**Recommendation:** Validate issue metadata is non-empty before proceeding with worktree creation.
-
-### MEDIUM: `ISSUE_NUM` extraction from key is fragile (runner.sh:63, cronjob-dispatch.sh:30)
-
-**Files:** `runner.sh:63`, `cronjob-dispatch.sh:30`  
-**Severity:** MEDIUM  
-**Description:**  
-```bash
-ISSUE_NUM=$(echo "$ISSUE_KEY" | sed 's/issue-//')
-```
-If `ISSUE_KEY` doesn't start with `issue-` (e.g., bare number or `ISSUE-1234`), `sed` returns the input unchanged. The malformed number could cause downstream failures.  
-**Recommendation:** Use `grep -oE '[0-9]+$'` to extract the numeric suffix.
-
-### MEDIUM: Status file modification out-of-band with state.json (runner.sh:59-60, 82-84, 123-124, 148-149)
-
-**File:** `hooks/hermes/runner.sh`  
-**Lines:** 59, 82, 84, 123, 124, 148, 149  
-**Severity:** MEDIUM  
-**Description:** The script writes to the workspace `status` file AND calls `autoship_state_set` (which updates `state.json`) but there's no transactional guarantee between the two. If the script crashes between the two writes, the status and state diverge.  
-**Impact:** Stale `state.json` entries; watchdog scripts see inconsistent state.  
-**Recommendation:** Always update `state.json` first, then the status file, or better, make the status file authoritative and reconcile from it.
-
-### MEDIUM: No validation of `TASK_TYPE` values (dispatch.sh:42)
-
-**File:** `hooks/hermes/dispatch.sh`  
-**Line:** 42  
-**Severity:** MEDIUM  
-**Description:** `TASK_TYPE="${POSITIONAL[1]:-medium_code}"` accepts any string without validation. Downstream consumers (model-router.sh, prompt generation) may receive unexpected values.  
-**Recommendation:** Validate against a known set of task types (`simple_code`, `medium_code`, `complex_code`, `docs`, `review`, etc.).
-
-### MEDIUM: No validation that PR was actually created before closing issue (close-issue.sh:9-19)
-
-**File:** `hooks/hermes/close-issue.sh`  
-**Lines:** 9–19  
-**Severity:** MEDIUM  
-**Description:** The script closes an issue with `gh issue close` after assuming completion, but doesn't verify that a PR was actually created on the associated branch. If the branch push failed but the status was set to COMPLETE, issues could be closed without corresponding code.  
-**Recommendation:** Verify PR exists for the branch before closing the issue.
-
-### LOW: Workspace glob expands literally when empty (cleanup-worktrees.sh:47, status.sh:29)
-
-**Files:** `cleanup-worktrees.sh:47`, `status.sh:29`  
-**Severity:** LOW  
-**Description:** `for ws_dir in "$WORKSPACES_DIR"/issue-*` — if no matching directories exist, the glob remains as a literal `issue-*` string. The `[[ -d "$ws_dir" ]]` guard (line 48) catches this, but there's no log message about the empty state.  
-**Recommendation:** Add a `shopt -s nullglob` or an explicit empty-state check with a log message.
+1. **C2** — Implement actual `delegate_task` invocation in `runner.sh` (or document limitation)
+2. **C1** — Unify model routing config between Hermes and OpenCode
+3. **H1** — Fix `perl_timeout` function export for macOS
+4. **H4** — Replace `tail -r` with portable `sort -r` in `auto-prune.sh`
+5. **C3** — Remove redundant `gh label list` check in `update-state.sh`
+6. **H2** — Remove duplicate `--log` block in `select-model.sh`
+7. **H5** — Distinguish rate-limit 403 from auth 401 in `gh-retry.sh`
+8. **M1** — Add `hooks/hermes/*.sh` to `check.sh` syntax checks
+9. **M2** — Fix space-in-path handling in `cleanup-worktrees.sh`
+10. **C4** — Clarify workspace metadata vs worktree root file locations
 
 ---
 
-## 4. Documentation Gaps (6 issues)
+## GitHub Issues Created
 
-### HIGH: No Hermes runtime developer guide
+No issues were created because the target repo (`Maleick/AutoShip`) had no open issues at the time of research, and the `atomic:ready` label query returned empty results. The findings above should be filed as:
 
-**Severity:** HIGH  
-**Description:** There is **no dedicated Hermes runtime documentation**. The `docs/` directory has `API.md`, `OPENCODE_INSTALL.md`, `OPENCODE_PORT_SPEC.md`, `RELEASE.md` — all OpenCode-focused. The `wiki/` directory has `Architecture.md`, `Configuration.md`, `Design-Decisions.md`, `Home.md`, `Troubleshooting.md` — also OpenCode-only. The `ARCHITECTURE.md` at root has a `### Hermes Flow` section and a table, but it's high-level (6 lines).  
-**Impact:** Developers and operators cannot understand: how to set up Hermes runtime, how to configure it, how to troubleshoot it, or how the hooks interact.  
-**Recommendation:** Create `docs/HERMES_RUNTIME.md` covering:
-- Prerequisites and setup
-- Environment variable reference
-- Hook dependency chain diagram
-- Status lifecycle (QUEUED → RUNNING → COMPLETE/BLOCKED/STUCK)
-- Cronjob setup instructions
-- Troubleshooting common issues
-
-### HIGH: No environment variable reference
-
-**Severity:** HIGH  
-**Description:** The following environment variables are used across Hermes hooks with **zero documentation**:
-
-| Variable | Used In | Purpose |
-|----------|---------|---------|
-| `HERMES_TARGET_REPO` | dispatch.sh, plan-issues.sh, post-merge-cleanup.sh, close-issue.sh | Target GitHub repo |
-| `HERMES_TARGET_REPO_PATH` | runner.sh, cleanup-worktrees.sh | Local path to target repo |
-| `HERMES_SESSION_ID` | runner.sh, dispatch.sh, setup.sh, status.sh | Hermes session detection |
-| `HERMES_CWD` | setup.sh, status.sh | Hermes current working dir |
-| `HERMES_PROVIDER` | setup.sh | Hermes provider |
-| `HERMES_LABELS` | plan-issues.sh | Issue labels to filter |
-
-**Recommendation:** Add a doc with every env var, its default, example values, and which scripts use it.
-
-### MEDIUM: No function- or parameter-level documentation
-
-**Severity:** MEDIUM  
-**Description:** Most Hermes shell functions lack documentation about:
-- Parameters (order, types, defaults)
-- Return values (stdout output vs exit codes)
-- Side effects (which files are modified)
-- State transitions (which states are set)
-
-Example: `model-router.sh` exports 4 functions (`get_model_from_tier`, `check_model_available`, `dispatch_with_routing`, `update_usage_log`) but doesn't document their signatures or expected inputs.  
-**Recommendation:** Add shell function documentation using consistent `# Usage:` and `# Returns:` conventions (matching `hooks/lib/common.sh` style).
-
-### MEDIUM: Missing script-level "what can go wrong" sections
-
-**Severity:** MEDIUM  
-**Description:** Each script should document:
-- Prerequisites (which CLIs: gh, jq, git, hermes)
-- Exit codes and their meanings
-- What happens on partial failure
-- Concurrency considerations
-
-Currently, only `runner.sh:1-2` has basic doc. `update-state.sh` is the best-documented but none of the Hermes hooks follow the pattern.  
-**Recommendation:** Add a header comment block to each Hermes hook with prerequisites, exit codes, and failure modes.
-
-### MEDIUM: `model-router.sh` functions exported without documentation for consumers
-
-**Severity:** MEDIUM  
-**Description:** Lines 124–128 export 4 shell functions with `export -f`. Any script that calls these needs to source this file, but there's no documentation about which functions are safe to call externally, their parameter requirements, or their output format. The `dispatch_with_routing` function is called from `dispatch.sh:96` but the output format (last line of stdout) is an implicit convention.  
-**Impact:** Callers that use different parsing will misbehave.  
-**Recommendation:** Document the contract for each exported function in the file header.
-
-### LOW: No version/changelog for Hermes hooks
-
-**Severity:** LOW  
-**Description:** The `CHANGELOG.md` exists for the overall project but has no Hermes-specific entries. The `config/model-routing.json` has `"version": "2026-05-03"` but the Hermes hooks don't track their own version.  
-**Recommendation:** Add a `HERMES_VERSION` variable to each Hermes hook or a single version file.
+| Issue | Title | Label |
+|-------|-------|-------|
+| #TBD | Hermes runner `delegate_task` is a no-op stub | `bug`, `hermes` |
+| #TBD | Hermes `model-router.sh` reads stale `config/model-routing.json` | `bug`, `hermes`, `routing` |
+| #TBD | `update-state.sh` wastes API quota on `gh label list` | `bug`, `performance` |
+| #TBD | `create-worktree.sh` deletes workspace metadata from worktree root | `bug`, `data-loss` |
+| #TBD | `perl_timeout` function not exported in Hermes runner | `bug`, `macos`, `timeout` |
+| #TBD | `select-model.sh` has unreachable duplicate `--log` block | `bug`, `cleanup` |
+| #TBD | `auto-prune.sh` uses non-portable `tail -r` | `bug`, `linux`, `portability` |
+| #TBD | `gh-retry.sh` treats rate-limit 403 as non-retryable | `bug`, `retry`, `github-api` |
+| #TBD | `check.sh` skips Hermes hook syntax validation | `bug`, `hermes`, `qa` |
+| #TBD | `cleanup-worktrees.sh` breaks on paths with spaces | `bug`, `portability` |
+| #TBD | `verify-result.sh` test command whitelist is too restrictive | `bug`, `ux` |
+| #TBD | Documentation: `AUTOSHIP.md` and `README.md` concurrency values out of sync | `docs`, `cleanup` |
 
 ---
 
-## Configuration File Findings (config/model-routing.json)
+## Recommendations
 
-### MEDIUM: Config `max_concurrent: 10` conflicts with hooks using 3
+1. **Hermes Runtime Maturity:** The Hermes hooks are significantly less mature than OpenCode hooks. Consider marking Hermes support as "beta" in documentation until `delegate_task` invocation and model routing are fixed.
 
-**File:** `config/model-routing.json:5`
-**Severity:** MEDIUM
-**Description:** The config declares `max_concurrent: 10` (with a note about Hermes bottleneck), but Hermes hooks override this to 3 (from `~/.hermes/config.yaml` or default). The config file value is never actually read by Hermes hooks — they use their own YAML parsing from `config.yaml`. There's a discrepancy between the declared and actual limits.
-**Recommendation:** Either read `max_concurrent` from `model-routing.json` in Hermes hooks, or remove the note and align the values.
+2. **Model Routing Unification:** Maintain a single source of truth for model routing. The current split between `config/model-routing.json` (static tiers) and `.autoship/model-routing.json` (live OpenCode pool) causes confusion. Merge into one file with a `runtime` field.
 
-### LOW: `gpt-5.5` listed in hermes_fallback tier but policy forbids `openai/gpt-5.5-fast`
+3. **macOS/Linux Portability Audit:** Several hooks (`auto-prune.sh`, `update-state.sh` date parsing, `runner.sh` timeout) have macOS-specific code that breaks on Linux. Run `check.sh` in a Linux CI container to catch these.
 
-**File:** `config/model-routing.json:43`
-**Severity:** LOW
-**Description:** Rule 5 says "Never use openai/gpt-5.5-fast" but the `hermes_fallback` tier lists `gpt-5.5` (without `-fast` suffix). It's unclear whether `gpt-5.5` here refers to `openai/gpt-5.5` (allowed) or is a typo for `openai/gpt-5.5-fast` (disallowed). The distinction matters.
-**Recommendation:** Be explicit about the model ID. If `openai/gpt-5.5` is intended, add a clarifying note.
+4. **Error Handling Telemetry:** The failure capture system (`capture-failure.sh`) is well-designed but underutilized. Ensure all hooks call `autoship_capture_failure` on non-zero exits, not just the runner.
+
+5. **State File Locking:** The `flock` / `lockf` dual-path locking in `update-state.sh` is clever but the `lockf` path has not been tested in CI. Add a test that simulates concurrent state updates.
+
+6. **Documentation Sync:** Establish a single source of truth for `max_concurrent` values and runtime capabilities. The `README.md`, `AUTOSHIP.md`, `config/model-routing.json`, and `.autoship/config.json` currently disagree.
 
 ---
 
-## Cross-Cutting Concerns
-
-### Mutable workspace files without locking (ALL Hermes hooks)
-
-**Every Hermes hook** that reads/writes workspace status files does so without file locking. The main AutoShip state file (`state.json`) has proper `flock`/`lockf` protection in `update-state.sh`, but the workspace `status` files and `HERMES_PROMPT.md` files are unprotected. Concurrent cronjob invocations of `runner.sh` can corrupt these files.
-
-**Recommendation:** Extend the locking pattern from `update-state.sh` to all workspace file operations, or make the status canonical through `update-state.sh` and remove direct status file writes.
-
-### Inconsistent state machine
-
-The Hermes hooks use states: QUEUED, RUNNING, COMPLETE, BLOCKED, STUCK, DELEGATED, unknown. The OpenCode runtime uses a different set. The `update-state.sh` script knows about both sets but there's overlap and potential confusion:
-- `DELEGATED` is unique to Hermes (and as noted, never resolved)
-- `unknown` is used as fallback for missing files
-- `COMPLETE` vs `completed` — case mismatch between workspace status files and `state.json`
-
-**Recommendation:** Define a single shared state enum for both runtimes. Document the valid transitions.
-
-### ShellCheck compliance
-
-None of the Hermes hooks have been checked with ShellCheck. Common issues observed:
-- Unquoted variable expansions (many instances)
-- `echo` of untrusted variables (use `printf '%s\n'`)
-- Missing `local` declarations for function variables
-- `for` loops over command output without `while read`
-
-**Recommendation:** Run `shellcheck hooks/hermes/*.sh` and fix all violations.
-
----
-
-## Summary Count
-
-| Category | HIGH | MEDIUM | LOW | Total |
-|----------|------|--------|-----|-------|
-| Hook Robustness | 2 | 6 | 2 | 10 |
-| Error Handling | 2 | 5 | 1 | 8 |
-| Missing Validation | 0 | 5 | 1 | 6 |
-| Documentation Gaps | 2 | 3 | 1 | 6 |
-| Configuration | 0 | 1 | 1 | 2 |
-| **Total** | **6** | **20** | **6** | **32** |
-
-**Recommendation priority:** Fix the 6 HIGH-severity items first (delegate_task stub, set -e in command substitutions, no-op availability checker, silent worktree failure, missing docs, and env var docs), then address the 5 MEDIUM concurrency/validation items.
+*End of findings. Ready for burn-down prioritization.*
