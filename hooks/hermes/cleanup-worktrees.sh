@@ -87,11 +87,11 @@ if [[ -d "$TARGET_REPO" ]]; then
     wt_path="$wt_info"
     issue_num=$(basename "$wt_path" | sed 's/issue-//')
     
-    # Check if issue is still active (atomic:ready or atomic:running)
+    # Check if issue is still active (autoship:ready or autoship:running)
     is_active=false
     if command -v gh &>/dev/null; then
       labels=$(gh issue view "$issue_num" --json labels --jq '[.labels[].name]' 2>/dev/null || echo "[]")
-      if echo "$labels" | grep -qE "atomic:ready|atomic:running"; then
+      if echo "$labels" | grep -qE "autoship:ready|autoship:running"; then
         is_active=true
       fi
     fi

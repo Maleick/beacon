@@ -35,7 +35,14 @@ threshold_exceeded() {
 get_size_gb() {
   local dir="$1"
   if [[ -d "$dir" ]]; then
-    du -sh "$dir" 2>/dev/null | awk '{print $1}' | sed 's/G//g; s/M//.001/g; s/K//.000001/g'
+    local raw
+    raw=$(du -sh "$dir" 2>/dev/null | awk '{print $1}')
+    case "$raw" in
+      *G) echo "${raw%G}" ;;
+      *M) echo "$(echo "${raw%M} * 0.001" | bc -l 2>/dev/null || echo "0")" ;;
+      *K) echo "$(echo "${raw%K} * 0.000001" | bc -l 2>/dev/null || echo "0")" ;;
+      *) echo "$raw" ;;
+    esac
   else
     echo "0"
   fi
@@ -48,8 +55,16 @@ prune_oversized_worktrees() {
   local pruned=0
   for wt in "$WORKTREE_BASE"/issue-*; do
     [[ -d "$wt" ]] || continue
-    
-    local size_gb=$(get_size_gb "$wt")
+    local issue_num
+    issue_num=$(basename "$wt" | sed 's/issue-//')
+    # Only process numeric issue directories
+    if [[ ! "$issue_num" =~ ^[0-9]+$ ]]; then
+      log "  Skipping non-numeric worktree: $wt"
+      continue
+    fi
+
+    local size_gb
+    size_gb=$(get_size_gb "$wt")
     if (( $(echo "$size_gb > $MAX_WORKTREE_SIZE_GB" | bc -l 2>/dev/null || echo "0") )); then
       log "Pruning oversized worktree: $wt (${size_gb}GB > ${MAX_WORKTREE_SIZE_GB}GB)"
       
@@ -117,7 +132,7 @@ prune_by_total_size() {
   
   # Sort by modification time, oldest first
   local pruned=0
-  for wt in $(ls -1td "$WORKTREE_BASE"/issue-* 2>/dev/null | tac); do
+  for wt in $(ls -1td "$WORKTREE_BASE"/issue-* 2>/dev/null | tail -r); do
     [[ -d "$wt" ]] || continue
     
     local issue_num=$(basename "$wt" | sed 's/issue-//')
@@ -157,7 +172,7 @@ prune_by_workspace_count() {
   local to_remove=$((count - MAX_WORKSPACE_COUNT))
   local removed=0
   
-  for ws in $(ls -1td "$AUTOSHIP_DIR"/workspaces/issue-* 2>/dev/null | tac | head -$to_remove); do
+  for ws in $(ls -1td "$AUTOSHIP_DIR"/workspaces/issue-* 2>/dev/null | tail -r | head -$to_remove); do
     [[ -d "$ws" ]] || continue
     
     local issue_num=$(basename "$ws" | sed 's/issue-//')

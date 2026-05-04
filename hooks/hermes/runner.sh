@@ -83,35 +83,34 @@ if [[ -n "${1:-}" ]]; then
     autoship_state_set set-blocked "$ISSUE_KEY" reason="worktree not found"
     exit 1
   fi
-  
+
   echo "Dispatching $ISSUE_KEY in $worktree_path"
   
   # Execute via delegate_task if inside Hermes session, else hermes chat
   if [[ -n "${HERMES_SESSION_ID:-}" ]]; then
     # Inside Hermes — use delegate_task for parallel execution
     echo "Inside Hermes session — using delegate_task..."
-    
+
     # Read the prompt content
     prompt_content=$(cat "$workspace_dir/HERMES_PROMPT.md" 2>/dev/null || echo "Complete issue #$ISSUE_NUM in $worktree_path")
-    
-    # Create a delegate_task-compatible task and execute
-    # Note: This requires the parent Hermes agent to have delegate_task available
-    # The parent will receive the task and execute it
+
+    # delegate_task is available in this Hermes session
+    # The parent agent will receive the task and execute it
     echo "DELEGATE_TASK_READY: $ISSUE_KEY"
     echo "Worktree: $worktree_path"
     echo "Prompt: $workspace_dir/HERMES_PROMPT.md"
-    
+
     # Write a marker file that the parent can detect
     printf 'DELEGATED\n' > "$status_file"
-    
+
     # The parent Hermes agent should:
     # 1. Detect DELEGATED status
     # 2. Read HERMES_PROMPT.md
     # 3. Call delegate_task with the prompt as goal
     # 4. Update status to COMPLETE/BLOCKED/STUCK based on result
-    
+
     echo "Parent agent should now call delegate_task for $ISSUE_KEY"
-    
+
   elif command -v hermes &>/dev/null; then
     # Hermes CLI available — spawn hermes chat
     cd "$worktree_path"

@@ -43,7 +43,14 @@ get_model_from_tier() {
   if [[ -f "$usage_log" ]]; then
     last_used=$(jq -r ".last_model // empty" "$usage_log" 2>/dev/null || true)
   fi
-  
+
+  # Validate models list is non-empty
+  if [[ -z "$models" ]]; then
+    echo "Error: tier '$tier_name' has no models" >&2
+    echo "kimi-k2.6"  # fallback
+    return
+  fi
+
   # Find next model in rotation
   local next_model=""
   local found_last=false
@@ -77,29 +84,39 @@ check_model_available() {
 dispatch_with_routing() {
   local task_type="${1:-code}"
   local complexity="${2:-simple}"
-  
+
   # Determine tier based on task
   local tier="zen_free"
   if [[ "$complexity" == "complex" ]]; then
     tier="go_paid"
   fi
-  
-  # Try zen_free first
+
+  # Try the determined tier first
   local model
-  model=$(get_model_from_tier "zen_free")
-  
+  model=$(get_model_from_tier "$tier")
+
   if check_model_available "$model"; then
     echo "$model"
     return 0
   fi
-  
-  # Fallback to go_paid
-  model=$(get_model_from_tier "go_paid")
-  if check_model_available "$model"; then
-    echo "$model"
-    return 0
+
+  # Fallback to other tiers
+  if [[ "$tier" != "zen_free" ]]; then
+    model=$(get_model_from_tier "zen_free")
+    if check_model_available "$model"; then
+      echo "$model"
+      return 0
+    fi
   fi
-  
+
+  if [[ "$tier" != "go_paid" ]]; then
+    model=$(get_model_from_tier "go_paid")
+    if check_model_available "$model"; then
+      echo "$model"
+      return 0
+    fi
+  fi
+
   # Final fallback to hermes
   echo "kimi-k2.6"
   return 0

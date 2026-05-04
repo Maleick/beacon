@@ -98,13 +98,21 @@ else
 fi
 ROLE="implementer"
 
+# Validate model is non-empty
+if [[ -z "$MODEL" ]]; then
+  echo "Error: model selection returned empty" >&2
+  exit 1
+fi
+
 # Log model selection
 mkdir -p "$AUTOSHIP_DIR/logs"
 echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) issue=$ISSUE_NUM model=$MODEL" >> "$AUTOSHIP_DIR/logs/model-selection.log"
 
+# Ensure workspace directory exists before writing model
+mkdir -p "$WORKSPACE_PATH"
+
 # Write model to workspace
-printf '%s
-' "$MODEL" > "$WORKSPACE_PATH/model"
+printf '%s\n' "$MODEL" > "$WORKSPACE_PATH/model"
 
 if [[ "$DRY_RUN" == true ]]; then
   echo "Dry run: would dispatch issue #$ISSUE_NUM to Hermes ($TASK_TYPE)"
@@ -115,7 +123,14 @@ if [[ "$DRY_RUN" == true ]]; then
 fi
 
 # Create worktree using shared hook
-FULL_WORKSPACE_PATH=$(bash "$SCRIPT_DIR/../opencode/create-worktree.sh" "$ISSUE_KEY" "autoship/issue-${ISSUE_NUM}")
+FULL_WORKSPACE_PATH=$(bash "$SCRIPT_DIR/../opencode/create-worktree.sh" "$ISSUE_KEY" "autoship/issue-${ISSUE_NUM}") || {
+  echo "Error: create-worktree.sh failed for $ISSUE_KEY" >&2
+  exit 1
+}
+if [[ -z "$FULL_WORKSPACE_PATH" || ! -d "$FULL_WORKSPACE_PATH" ]]; then
+  echo "Error: worktree path empty or missing after creation: '$FULL_WORKSPACE_PATH'" >&2
+  exit 1
+fi
 mkdir -p "$WORKSPACE_PATH"
 date -u +%Y-%m-%dT%H:%M:%SZ > "$WORKSPACE_PATH/started_at"
 printf 'QUEUED\n' > "$WORKSPACE_PATH/status"
@@ -157,7 +172,11 @@ $BODY
 - If stuck at minute 8, stop and report STUCK with exact status.
 
 ## PR Title
-$(bash "$SCRIPT_DIR/../opencode/pr-title.sh" --issue "$ISSUE_NUM" --title "$TITLE" --labels "$LABELS")
+PR_TITLE=$(bash "$SCRIPT_DIR/../opencode/pr-title.sh" --issue "$ISSUE_NUM" --title "$TITLE" --labels "$LABELS") || {
+  echo "Warning: pr-title.sh failed, using fallback title" >&2
+  PR_TITLE="AutoShip: $TITLE (#$ISSUE_NUM)"
+}
+$PR_TITLE
 
 ## Notes
 - Hermes toolsets: terminal, file, web, delegation
