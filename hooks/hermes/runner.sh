@@ -83,10 +83,35 @@ if [[ -n "${1:-}" ]]; then
   
   echo "Dispatching $ISSUE_KEY in $worktree_path"
   
-  # Execute via hermes chat in worktree with 10-minute timeout
-  if command -v hermes &>/dev/null; then
+  # Execute via delegate_task if inside Hermes session, else hermes chat
+  if [[ -n "${HERMES_SESSION_ID:-}" ]]; then
+    # Inside Hermes — use delegate_task for parallel execution
+    echo "Inside Hermes session — using delegate_task..."
+    
+    # Read the prompt content
+    prompt_content=$(cat "$workspace_dir/HERMES_PROMPT.md" 2>/dev/null || echo "Complete issue #$ISSUE_NUM in $worktree_path")
+    
+    # Create a delegate_task-compatible task and execute
+    # Note: This requires the parent Hermes agent to have delegate_task available
+    # The parent will receive the task and execute it
+    echo "DELEGATE_TASK_READY: $ISSUE_KEY"
+    echo "Worktree: $worktree_path"
+    echo "Prompt: $workspace_dir/HERMES_PROMPT.md"
+    
+    # Write a marker file that the parent can detect
+    printf 'DELEGATED\n' > "$status_file"
+    
+    # The parent Hermes agent should:
+    # 1. Detect DELEGATED status
+    # 2. Read HERMES_PROMPT.md
+    # 3. Call delegate_task with the prompt as goal
+    # 4. Update status to COMPLETE/BLOCKED/STUCK based on result
+    
+    echo "Parent agent should now call delegate_task for $ISSUE_KEY"
+    
+  elif command -v hermes &>/dev/null; then
+    # Hermes CLI available — spawn hermes chat
     cd "$worktree_path"
-    # Run hermes chat with the HERMES_PROMPT.md as context
     # Timeout: 10 minutes (600 seconds) for atomic work
     timeout 600 hermes chat --prompt "$workspace_dir/HERMES_PROMPT.md" --workdir "$worktree_path" || {
       exit_code=$?
@@ -116,9 +141,9 @@ if [[ -n "${1:-}" ]]; then
       autoship_state_set set-stuck "$ISSUE_KEY"
     fi
   else
-    echo "Hermes CLI not available — cannot execute"
+    echo "Hermes not available — cannot execute"
     printf 'BLOCKED\n' > "$status_file"
-    autoship_state_set set-blocked "$ISSUE_KEY" reason="hermes_cli_missing"
+    autoship_state_set set-blocked "$ISSUE_KEY" reason="hermes_unavailable"
   fi
   
   exit 0
