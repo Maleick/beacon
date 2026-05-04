@@ -2,7 +2,7 @@
   "version": "2026-05-03",
   "runtime": "opencode",
   "dispatch_method": "free_first_rotation",
-  "max_concurrent": 15,
+  "max_concurrent": 10,
   "tiers": [
     {
       "name": "zen_free",
