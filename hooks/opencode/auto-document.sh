@@ -155,7 +155,7 @@ specialized shell scripts and TypeScript types.
 
 - \`hooks/opencode/select-model.sh\` — Selects the best model for a task type
 - \`hooks/opencode/setup.sh\` — Generates model-routing.json from live OpenCode models
-- \`.autoship/model-routing.json\` — Role assignments, pools, and model configurations
+- \`config/model-routing.json\` — Role assignments, pools, and model configurations
 
 ### Reliability Features
 

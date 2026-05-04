@@ -117,7 +117,7 @@ autoship_resolve_model() {
   fi
   
   repo_root="$(autoship_repo_root 2>/dev/null || true)"
-  routing_file="$repo_root/.autoship/model-routing.json"
+  routing_file="$repo_root/config/model-routing.json"
   
   if [[ -f "$routing_file" ]]; then
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../opencode" && pwd 2>/dev/null || true)"

@@ -3,7 +3,7 @@ set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 AB_TEST_FILE="$REPO_ROOT/.autoship/ab-test.json"
-ROUTING_FILE="$REPO_ROOT/.autoship/model-routing.json"
+ROUTING_FILE="$REPO_ROOT/config/model-routing.json"
 
 mkdir -p "$(dirname "$AB_TEST_FILE")"
 

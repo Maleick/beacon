@@ -91,7 +91,7 @@ create_routing() {
   local repo_path="$1"
   local routing_json="$2"
   mkdir -p "$repo_path/.autoship"
-  echo "$routing_json" > "$repo_path/.autoship/model-routing.json"
+  echo "$routing_json" > "$repo_path/config/model-routing.json"
 }
 
 # Create a config.json file

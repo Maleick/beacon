@@ -41,3 +41,4 @@ credentials.json
 service-account*.json
 CLAUDE.md
 # AutoShip runtime state (not ignored — contains model routing)
+.autoship/

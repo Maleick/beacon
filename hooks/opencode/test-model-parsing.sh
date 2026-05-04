@@ -104,7 +104,7 @@ assert_eq "openai/gpt-5.5" "$ROLE_MODEL" "planner role uses gpt-5.5"
 echo "=== Test: select-model.sh --role returns role model ==="
 ROLE_REPO="$TMP_DIR/role-test-repo"
 mkdir -p "$ROLE_REPO/.autoship"
-cp "$ROLE_ROUTING" "$ROLE_REPO/.autoship/model-routing.json"
+cp "$ROLE_ROUTING" "$ROLE_REPO/config/model-routing.json"
 ROLE_SELECTION="$(cd "$ROLE_REPO" && bash "$SCRIPT_DIR/select-model.sh" --role planner)"
 assert_eq "openai/gpt-5.5" "$ROLE_SELECTION" "select-model.sh --role planner returns gpt-5.5"
 
@@ -115,7 +115,7 @@ assert_eq "opencode/nemotron-3-super-free" "$POOL_SELECTION" "select-model.sh --
 echo "=== Test: select-model.sh round-robins compatible worker models by issue ==="
 ROUND_ROBIN_REPO="$TMP_DIR/round-robin-repo"
 mkdir -p "$ROUND_ROBIN_REPO/.autoship"
-cat > "$ROUND_ROBIN_REPO/.autoship/model-routing.json" <<'JSON'
+cat > "$ROUND_ROBIN_REPO/config/model-routing.json" <<'JSON'
 {
   "models": [
     {"id": "opencode/free-a", "cost": "free", "strength": 80, "max_task_types": ["medium_code"]},
@@ -132,7 +132,7 @@ assert_eq "opencode/free-a,opencode/free-b,opencode/free-c" "$RR_300,$RR_301,$RR
 echo "=== Test: select-model.sh uses orchestrator advisor for unsupported complex tasks ==="
 ADVISOR_REPO="$TMP_DIR/advisor-repo"
 mkdir -p "$ADVISOR_REPO/.autoship"
-cat > "$ADVISOR_REPO/.autoship/model-routing.json" <<'JSON'
+cat > "$ADVISOR_REPO/config/model-routing.json" <<'JSON'
 {
   "roles": {
     "orchestrator": "opencode-go/kimi-k2.6"
@@ -165,8 +165,8 @@ install_mock_opencode_models_fixture "$MODEL_REPO/bin"
   cd "$MODEL_REPO/autoship"
   PATH="$MODEL_REPO/bin:$PATH" bash hooks/opencode/setup.sh --no-tui --max-agents=7 --labels=agent:ready,needs-review --worker-models=openai/gpt-5.3-codex-spark >/dev/null
 )
-assert_eq "openai/gpt-5.3-codex-spark" "$(jq -r '.models[0].id' "$MODEL_REPO/autoship/.autoship/model-routing.json")" "setup writes explicit selected worker model"
-assert_eq "selected" "$(jq -r '.models[0].cost' "$MODEL_REPO/autoship/.autoship/model-routing.json")" "setup classifies explicit worker model as selected"
+assert_eq "openai/gpt-5.3-codex-spark" "$(jq -r '.models[0].id' "$MODEL_REPO/autoship/config/model-routing.json")" "setup writes explicit selected worker model"
+assert_eq "selected" "$(jq -r '.models[0].cost' "$MODEL_REPO/autoship/config/model-routing.json")" "setup classifies explicit worker model as selected"
 assert_eq "7" "$(jq -r '.maxConcurrentAgents' "$MODEL_REPO/autoship/.autoship/config.json")" "setup honors portable --max-agents flag"
 assert_eq "agent:ready,needs-review" "$(jq -r '.labels | join(",")' "$MODEL_REPO/autoship/.autoship/config.json")" "setup honors portable --labels flag"
 
@@ -180,10 +180,10 @@ install_mock_opencode_models_fixture "$FREE_REPO/bin"
   cd "$FREE_REPO/autoship"
   PATH="$FREE_REPO/bin:$PATH" bash hooks/opencode/setup.sh --no-tui >/dev/null
 )
-assert_eq "2" "$(jq '[.models[] | select(.cost == "free")] | length' "$FREE_REPO/autoship/.autoship/model-routing.json")" "setup fixture free defaults include only free workers"
-assert_eq "opencode/nemotron-3-super-free" "$(jq -r '.defaultFallback' "$FREE_REPO/autoship/.autoship/model-routing.json")" "setup chooses strongest ranked free model as default fallback"
-assert_eq "opencode/nemotron-3-super-free" "$(jq -r '.roles.orchestrator' "$FREE_REPO/autoship/.autoship/model-routing.json")" "setup defaults role models from live free inventory"
-if jq -e '.pools.default.models[] | select(. == "openai/gpt-5.5" or . == "openai/gpt-5.3-codex-spark")' "$FREE_REPO/autoship/.autoship/model-routing.json" >/dev/null; then
+assert_eq "2" "$(jq '[.models[] | select(.cost == "free")] | length' "$FREE_REPO/autoship/config/model-routing.json")" "setup fixture free defaults include only free workers"
+assert_eq "opencode/nemotron-3-super-free" "$(jq -r '.defaultFallback' "$FREE_REPO/autoship/config/model-routing.json")" "setup chooses strongest ranked free model as default fallback"
+assert_eq "opencode/nemotron-3-super-free" "$(jq -r '.roles.orchestrator' "$FREE_REPO/autoship/config/model-routing.json")" "setup defaults role models from live free inventory"
+if jq -e '.pools.default.models[] | select(. == "openai/gpt-5.5" or . == "openai/gpt-5.3-codex-spark")' "$FREE_REPO/autoship/config/model-routing.json" >/dev/null; then
   fail "setup default worker pool must not include paid or role models from fixture"
 fi
 
@@ -212,7 +212,7 @@ chmod +x "$NO_GPT_REPO/bin/opencode" "$NO_GPT_REPO/bin/gh"
   cd "$NO_GPT_REPO/autoship"
   PATH="$NO_GPT_REPO/bin:$PATH" bash hooks/opencode/setup.sh --no-tui >/dev/null
 )
-assert_eq "opencode/nemotron-3-super-free" "$(jq -r '.roles.orchestrator' "$NO_GPT_REPO/autoship/.autoship/model-routing.json")" "setup role default does not require gpt-5.5"
+assert_eq "opencode/nemotron-3-super-free" "$(jq -r '.roles.orchestrator' "$NO_GPT_REPO/autoship/config/model-routing.json")" "setup role default does not require gpt-5.5"
 
 echo "=== Test: setup rejects unavailable and forbidden models ==="
 if (cd "$MODEL_REPO/autoship" && PATH="$MODEL_REPO/bin:$PATH" bash hooks/opencode/setup.sh --no-tui --refresh-models --worker-models=missing/model >/dev/null 2>&1); then
@@ -232,8 +232,8 @@ install_mock_opencode_models_fixture "$ROLE_OVERRIDE_REPO/bin"
   cd "$ROLE_OVERRIDE_REPO/autoship"
   PATH="$ROLE_OVERRIDE_REPO/bin:$PATH" bash hooks/opencode/setup.sh --no-tui --orchestrator-model=openai/gpt-5.5 --reviewer-model=openai/gpt-5.3-codex-spark >/dev/null
 )
-assert_eq "openai/gpt-5.5" "$(jq -r '.roles.orchestrator' "$ROLE_OVERRIDE_REPO/autoship/.autoship/model-routing.json")" "setup stores orchestrator model override"
-assert_eq "openai/gpt-5.3-codex-spark" "$(jq -r '.roles.reviewer' "$ROLE_OVERRIDE_REPO/autoship/.autoship/model-routing.json")" "setup stores reviewer model override"
+assert_eq "openai/gpt-5.5" "$(jq -r '.roles.orchestrator' "$ROLE_OVERRIDE_REPO/autoship/config/model-routing.json")" "setup stores orchestrator model override"
+assert_eq "openai/gpt-5.3-codex-spark" "$(jq -r '.roles.reviewer' "$ROLE_OVERRIDE_REPO/autoship/config/model-routing.json")" "setup stores reviewer model override"
 
 echo "=== Test: setup does not consume piped stdin in non-TTY mode ==="
 WIZARD_REPO="$TMP_DIR/wizard-repo"
@@ -245,7 +245,7 @@ install_mock_opencode_models_fixture "$WIZARD_REPO/bin"
   cd "$WIZARD_REPO/autoship"
   printf 'openai/gpt-5.5\nopenai/gpt-5.3-codex-spark\n' | PATH="$WIZARD_REPO/bin:$PATH" bash hooks/opencode/setup.sh >/dev/null
 )
-assert_eq "opencode/nemotron-3-super-free" "$(jq -r '.roles.orchestrator' "$WIZARD_REPO/autoship/.autoship/model-routing.json")" "setup keeps computed orchestrator default without TTY prompt"
-assert_eq "opencode/nemotron-3-super-free" "$(jq -r '.roles.reviewer' "$WIZARD_REPO/autoship/.autoship/model-routing.json")" "setup keeps computed reviewer default without TTY prompt"
+assert_eq "opencode/nemotron-3-super-free" "$(jq -r '.roles.orchestrator' "$WIZARD_REPO/autoship/config/model-routing.json")" "setup keeps computed orchestrator default without TTY prompt"
+assert_eq "opencode/nemotron-3-super-free" "$(jq -r '.roles.reviewer' "$WIZARD_REPO/autoship/config/model-routing.json")" "setup keeps computed reviewer default without TTY prompt"
 
 echo "OpenCode model parsing tests passed"
