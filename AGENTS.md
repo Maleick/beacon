@@ -31,7 +31,7 @@ Core orchestration hooks in `hooks/opencode/`:
 
 Hermes runtime hooks in `hooks/hermes/`:
 - `setup.sh` - Discover Hermes capabilities, write `hermes-model-routing.json`
-- `plan-issues.sh` - Plan issues for Hermes dispatch (uses `autoship:ready-simple` label)
+- `plan-issues.sh` - Plan issues for Hermes dispatch (uses `agent:ready` label)
 - `dispatch.sh` - Create worktree and write `HERMES_PROMPT.md`
 - `runner.sh` - Execute Hermes workers (delegate_task or cronjob)
 - `status.sh` - Show Hermes runtime status

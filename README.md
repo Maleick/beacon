@@ -43,7 +43,7 @@ AutoShip is the multi-runtime plugin for solo maintainers who want their GitHub 
 
 ## What It Does
 
-- Reads open GitHub issues labeled `agent:ready` (OpenCode) or `autoship:ready-simple` (Hermes)
+- Reads open GitHub issues labeled `agent:ready` (OpenCode and Hermes)
 - Plans work in ascending issue-number order
 - Dispatches **OpenCode** workers up to 15 concurrent
 - Dispatches **Hermes** subagents up to 3 concurrent via cronjobs
@@ -133,7 +133,7 @@ bash hooks/hermes/dispatch.sh <issue-number>
 
 Hermes-specific configuration:
 - **Max concurrent**: 3 (Hermes subagent limit)
-- **Target label**: `autoship:ready-simple`
+- **Target label**: `agent:ready`
 - **Dispatch method**: Cronjob with 15-minute intervals
 - **Worktrees**: Created in `.autoship/workspaces/issue-<number>/`
 
@@ -157,7 +157,7 @@ AutoShip also loads committed policy profiles from `policies/`. Policies enrich 
 
 ```mermaid
 flowchart LR
-    A[GitHub issues<br/>agent:ready / autoship:ready-simple] --> B[configured planner]
+    A[GitHub issues<br/>agent:ready] --> B[configured planner]
     B --> C{Runtime}
     C -->|OpenCode| D[OpenCode worker<br/>free-first rotated pool<br/>max 15]
     C -->|Hermes| H[Hermes subagent<br/>cron-based dispatch<br/>max 3]

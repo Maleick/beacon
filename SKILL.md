@@ -19,7 +19,7 @@ Lightweight Hermes skill wrapper for the [AutoShip](https://github.com/Maleick/A
 
 - You need automated GitHub issue triage, planning, dispatch, and PR creation.
 - You want cron-based burn-down with worker rotation and CI gating.
-- The target repo uses `autoship:ready-simple` / `atomic:ready` labels.
+- The target repo uses `agent:ready` / `atomic:ready` labels.
 
 ## Runtime
 

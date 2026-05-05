@@ -1,0 +1,182 @@
+https://github.com/Maleick/AutoShip/issues/344
+https://github.com/Maleick/AutoShip/issues/344
+https://github.com/Maleick/AutoShip/issues/344
+Updated issue issue-344: state=running
+Dispatching issue-344 in /Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344
+  ┊ review diff
+[32m✓ Worktree created:[0m /Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/.worktrees/hermes-b4a8ba57
+  Branch: hermes/hermes-b4a8ba57
+a//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/docs/HERMES_RUNTIME.md → b//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/docs/HERMES_RUNTIME.md
+@@ -1,6 +1,5 @@
+ # HERMES_RUNTIME.md
+ # Hermes Runtime Developer / Operator Guide
+-# AutoShip Issue #325
+ 
+ ---
+ 
+  ┊ review diff
+a//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/docs/HERMES_RUNTIME.md → b//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/docs/HERMES_RUNTIME.md
+@@ -30,7 +30,7 @@
+ This creates `.autoship/hermes-model-routing.json` with:
+ - `available` — whether `hermes` CLI is on `$PATH`
+ - `active_session` — whether running inside a Hermes session (detected via `HERMES_SESSION_ID`, `HERMES_CWD`, or `HERMES_PROVIDER`)
+-- `max_concurrent` — hard cap of 3 (Hermes subagent limit)
++- `max_concurrent` — read from `~/.hermes/config.yaml` `max_concurrent_children` (default 20, synced with `config/model-routing.json`)
+ - `dispatch_method` — `cronjob`
+ 
+ ### 1.3 GitHub CLI (`gh`) Authentication
+  ┊ review diff
+a//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/docs/HERMES_RUNTIME.md → b//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/docs/HERMES_RUNTIME.md
+@@ -57,7 +57,7 @@
+ | `HERMES_SESSION_ID` | *(unset)* | Set when running inside a Hermes session; triggers `delegate_task` dispatch instead of `hermes chat` CLI |
+ | `HERMES_CWD` | *(unset)* | Hermes session working directory; part of active-session detection |
+ | `HERMES_PROVIDER` | *(unset)* | Active Hermes provider name; part of active-session detection |
+-| `HERMES_LABELS` | `autoship:ready-simple` | Comma-separated label filter for `plan-issues.sh` |
++| `HERMES_LABELS` | `agent:ready` | Comma-separated label filter for `plan-issues.sh` |
+ 
+ ### 2.1 Active Session Detection
+ 
+  ┊ review diff
+a//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/docs/HERMES_RUNTIME.md → b//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/docs/HERMES_RUNTIME.md
+@@ -67,6 +67,8 @@
+ - `HERMES_PROVIDER`
+ 
+ When active, `dispatch.sh` immediately invokes `runner.sh` via `delegate_task` rather than queuing for external cron dispatch.
++
++> **Note:** The `delegate_task` pathway is planned but not yet fully implemented. When `HERMES_SESSION_ID` is set, `runner.sh` currently writes a `DELEGATED` marker and prints instructions for the parent agent to manually call `delegate_task`. Full automatic handoff is pending.
+ 
+ ---
+ 
+  ┊ review diff
+a//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/docs/HERMES_RUNTIME.md → b//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/docs/HERMES_RUNTIME.md
+@@ -222,9 +222,9 @@
+ 
+ ### 6.3 Max Concurrent Reached
+ 
+-**Symptom:** `dispatch.sh` prints `CAP_REACHED: N active / 3 max`.
+-
+-**Fix:** Wait for running jobs to finish, or increase `max_concurrent_children` in `~/.hermes/config.yaml` (not recommended above 3 for Hermes subagent stability).
++**Symptom:** `dispatch.sh` prints `CAP_REACHED: N active / M max`.
++
++**Fix:** Wait for running jobs to finish, or adjust `max_concurrent_children` in `~/.hermes/config.yaml`. The default is 20 (synced with `config/model-routing.json`).
+ 
+ ### 6.4 Timeout / STUCK Issues
+ 
+  ┊ review diff
+a//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/docs/HERMES_RUNTIME.md → b//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/docs/HERMES_RUNTIME.md
+@@ -316,7 +316,7 @@
+ - [ ] `gh` CLI authenticated
+ - [ ] `HERMES_TARGET_REPO` and `HERMES_TARGET_REPO_PATH` set correctly
+ - [ ] `bash hooks/hermes/setup.sh` run once
+-- [ ] Issues labeled with `autoship:ready-simple` (or `HERMES_LABELS` override)
++- [ ] Issues labeled with `agent:ready` (or `HERMES_LABELS` override)
+ - [ ] `config/model-routing.json` present (for tiered model routing)
+ - [ ] `jq` installed
+ - [ ] Cronjob or manual `runner.sh` scheduled
+  ┊ review diff
+a//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/docs/HERMES_RUNTIME.md → b//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/docs/HERMES_RUNTIME.md
+@@ -323,4 +323,4 @@
+ 
+ ---
+ 
+-*Generated from hooks/hermes/*.sh source. Last updated: 2026-05-04*
++*Generated from hooks/hermes/*.sh source. Last updated: 2026-05-05*
+  ┊ review diff
+a//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/config/model-routing.json → b//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/config/model-routing.json
+@@ -3,7 +3,7 @@
+   "runtime": "opencode",
+   "dispatch_method": "free_first_rotation",
+   "max_concurrent": 20,
+-  "notes": "max_concurrent set to 20. Hermes delegation.max_concurrent_children synced to match.",
++  "notes": "max_concurrent set to 20. Hermes delegation.max_concurrent_children synced to match. See docs/HERMES_RUNTIME.md for current values.",
+   "tiers": [
+     {
+       "name": "zen_free",
+  ┊ review diff
+a//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/AGENTS.md → b//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/AGENTS.md
+@@ -31,7 +31,7 @@
+ 
+ Hermes runtime hooks in `hooks/hermes/`:
+ - `setup.sh` - Discover Hermes capabilities, write `hermes-model-routing.json`
+-- `plan-issues.sh` - Plan issues for Hermes dispatch (uses `autoship:ready-simple` label)
++- `plan-issues.sh` - Plan issues for Hermes dispatch (uses `agent:ready` label)
+ - `dispatch.sh` - Create worktree and write `HERMES_PROMPT.md`
+ - `runner.sh` - Execute Hermes workers (delegate_task or cronjob)
+ - `status.sh` - Show Hermes runtime status
+  ┊ review diff
+a//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/README.md → b//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/README.md
+@@ -43,7 +43,7 @@
+ 
+ ## What It Does
+ 
+-- Reads open GitHub issues labeled `agent:ready` (OpenCode) or `autoship:ready-simple` (Hermes)
++- Reads open GitHub issues labeled `agent:ready` (OpenCode and Hermes)
+ - Plans work in ascending issue-number order
+ - Dispatches **OpenCode** workers up to 15 concurrent
+ - Dispatches **Hermes** subagents up to 3 concurrent via cronjobs
+  ┊ review diff
+a//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/README.md → b//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/README.md
+@@ -133,7 +133,7 @@
+ 
+ Hermes-specific configuration:
+ - **Max concurrent**: 3 (Hermes subagent limit)
+-- **Target label**: `autoship:ready-simple`
++- **Target label**: `agent:ready`
+ - **Dispatch method**: Cronjob with 15-minute intervals
+ - **Worktrees**: Created in `.autoship/workspaces/issue-<number>/`
+ 
+  ┊ review diff
+a//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/README.md → b//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/README.md
+@@ -157,7 +157,7 @@
+ 
+ ```mermaid
+ flowchart LR
+-    A[GitHub issues<br/>agent:ready / autoship:ready-simple] --> B[configured planner]
++    A[GitHub issues<br/>agent:ready] --> B[configured planner]
+     B --> C{Runtime}
+     C -->|OpenCode| D[OpenCode worker<br/>free-first rotated pool<br/>max 15]
+     C -->|Hermes| H[Hermes subagent<br/>cron-based dispatch<br/>max 3]
+  ┊ review diff
+a//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/INSTALL.md → b//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/INSTALL.md
+@@ -7,7 +7,7 @@
+ | Runtime | Type | Max Workers | Label | Setup |
+ |---------|------|-------------|-------|-------|
+ | **OpenCode** | Interactive CLI | 15 | `agent:ready` | `opencode-autoship install` |
+-| **Hermes** | Cron-based | 3 | `autoship:ready-simple` | `bash hooks/hermes/setup.sh` |
++| **Hermes** | Cron-based | 20 | `agent:ready` | `bash hooks/hermes/setup.sh` |
+ 
+ ## OpenCode Handoff
+ 
+  ┊ review diff
+a//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/INSTALL.md → b//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/INSTALL.md
+@@ -25,7 +25,7 @@
+ - Git installed and available in your shell.
+ - GitHub CLI (`gh`) authenticated with access to the target repository.
+ - `jq` installed and available on `PATH`.
+-- A GitHub repository with issues labeled `agent:ready` (OpenCode) or `autoship:ready-simple` (Hermes).
++- A GitHub repository with issues labeled `agent:ready` (used by both OpenCode and Hermes).
+ 
+ ## npm Global Install
+ 
+  ┊ review diff
+a//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/INSTALL.md → b//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/INSTALL.md
+@@ -138,7 +138,7 @@
+ ### No Issues Are Planned
+ 
+ - Confirm `gh auth status` succeeds.
+-- Confirm the repository has open GitHub issues labeled `agent:ready` (OpenCode) or `autoship:ready-simple` (Hermes).
++- Confirm the repository has open GitHub issues labeled `agent:ready` (used by both OpenCode and Hermes).
+ - Check `/autoship-plan` (OpenCode) or `bash hooks/hermes/plan-issues.sh` (Hermes) before starting.
+ 
+ ### Hermes Runtime Issues
+  ┊ review diff
+a//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/SKILL.md → b//Users/maleick/Projects/AutoShip/.autoship/workspaces/issue-344/SKILL.md
+@@ -19,7 +19,7 @@
+ 
+ - You need automated GitHub issue triage, planning, dispatch, and PR creation.
+ - You want cron-based burn-down with worker rotation and CI gating.
+-- The target repo uses `autoship:ready-simple` / `atomic:ready` labels.
++- The target repo uses `agent:ready` / `atomic:ready` labels.
+ 
+ ## Runtime
+ 

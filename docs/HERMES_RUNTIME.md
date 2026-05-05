@@ -1,6 +1,5 @@
 # HERMES_RUNTIME.md
 # Hermes Runtime Developer / Operator Guide
-# AutoShip Issue #325
 
 ---
 
@@ -31,7 +30,7 @@ bash hooks/hermes/setup.sh
 This creates `.autoship/hermes-model-routing.json` with:
 - `available` — whether `hermes` CLI is on `$PATH`
 - `active_session` — whether running inside a Hermes session (detected via `HERMES_SESSION_ID`, `HERMES_CWD`, or `HERMES_PROVIDER`)
-- `max_concurrent` — hard cap of 3 (Hermes subagent limit)
+- `max_concurrent` — read from `~/.hermes/config.yaml` `max_concurrent_children` (default 20, synced with `config/model-routing.json`)
 - `dispatch_method` — `cronjob`
 
 ### 1.3 GitHub CLI (`gh`) Authentication
@@ -58,7 +57,7 @@ The default target repo is `Maleick/TextQuest`. Override via `HERMES_TARGET_REPO
 | `HERMES_SESSION_ID` | *(unset)* | Set when running inside a Hermes session; triggers `delegate_task` dispatch instead of `hermes chat` CLI |
 | `HERMES_CWD` | *(unset)* | Hermes session working directory; part of active-session detection |
 | `HERMES_PROVIDER` | *(unset)* | Active Hermes provider name; part of active-session detection |
-| `HERMES_LABELS` | `autoship:ready-simple` | Comma-separated label filter for `plan-issues.sh` |
+| `HERMES_LABELS` | `agent:ready` | Comma-separated label filter for `plan-issues.sh` |
 
 ### 2.1 Active Session Detection
 
@@ -68,6 +67,8 @@ The default target repo is `Maleick/TextQuest`. Override via `HERMES_TARGET_REPO
 - `HERMES_PROVIDER`
 
 When active, `dispatch.sh` immediately invokes `runner.sh` via `delegate_task` rather than queuing for external cron dispatch.
+
+> **Note:** The `delegate_task` pathway is planned but not yet fully implemented. When `HERMES_SESSION_ID` is set, `runner.sh` currently writes a `DELEGATED` marker and prints instructions for the parent agent to manually call `delegate_task`. Full automatic handoff is pending.
 
 ---
 
@@ -221,9 +222,9 @@ bash hooks/hermes/setup.sh
 
 ### 6.3 Max Concurrent Reached
 
-**Symptom:** `dispatch.sh` prints `CAP_REACHED: N active / 3 max`.
+**Symptom:** `dispatch.sh` prints `CAP_REACHED: N active / M max`.
 
-**Fix:** Wait for running jobs to finish, or increase `max_concurrent_children` in `~/.hermes/config.yaml` (not recommended above 3 for Hermes subagent stability).
+**Fix:** Wait for running jobs to finish, or adjust `max_concurrent_children` in `~/.hermes/config.yaml`. The default is 20 (synced with `config/model-routing.json`).
 
 ### 6.4 Timeout / STUCK Issues
 
@@ -315,11 +316,11 @@ bash hooks/hermes/setup.sh
 - [ ] `gh` CLI authenticated
 - [ ] `HERMES_TARGET_REPO` and `HERMES_TARGET_REPO_PATH` set correctly
 - [ ] `bash hooks/hermes/setup.sh` run once
-- [ ] Issues labeled with `autoship:ready-simple` (or `HERMES_LABELS` override)
+- [ ] Issues labeled with `agent:ready` (or `HERMES_LABELS` override)
 - [ ] `config/model-routing.json` present (for tiered model routing)
 - [ ] `jq` installed
 - [ ] Cronjob or manual `runner.sh` scheduled
 
 ---
 
-*Generated from hooks/hermes/*.sh source. Last updated: 2026-05-04*
+*Generated from hooks/hermes/*.sh source. Last updated: 2026-05-05*

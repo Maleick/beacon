@@ -3,7 +3,7 @@
   "runtime": "opencode",
   "dispatch_method": "free_first_rotation",
   "max_concurrent": 20,
-  "notes": "max_concurrent set to 20. Hermes delegation.max_concurrent_children synced to match.",
+  "notes": "max_concurrent set to 20. Hermes delegation.max_concurrent_children synced to match. See docs/HERMES_RUNTIME.md for current values.",
   "tiers": [
     {
       "name": "zen_free",

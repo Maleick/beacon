@@ -7,7 +7,7 @@ AutoShip is a multi-runtime plugin that turns GitHub issues into verified pull r
 | Runtime | Type | Max Workers | Label | Setup |
 |---------|------|-------------|-------|-------|
 | **OpenCode** | Interactive CLI | 15 | `agent:ready` | `opencode-autoship install` |
-| **Hermes** | Cron-based | 3 | `autoship:ready-simple` | `bash hooks/hermes/setup.sh` |
+| **Hermes** | Cron-based | 20 | `agent:ready` | `bash hooks/hermes/setup.sh` |
 
 ## OpenCode Handoff
 
@@ -25,7 +25,7 @@ Fetch and follow instructions from https://raw.githubusercontent.com/Maleick/Aut
 - Git installed and available in your shell.
 - GitHub CLI (`gh`) authenticated with access to the target repository.
 - `jq` installed and available on `PATH`.
-- A GitHub repository with issues labeled `agent:ready` (OpenCode) or `autoship:ready-simple` (Hermes).
+- A GitHub repository with issues labeled `agent:ready` (used by both OpenCode and Hermes).
 
 ## npm Global Install
 
@@ -138,7 +138,7 @@ opencode-autoship install
 ### No Issues Are Planned
 
 - Confirm `gh auth status` succeeds.
-- Confirm the repository has open GitHub issues labeled `agent:ready` (OpenCode) or `autoship:ready-simple` (Hermes).
+- Confirm the repository has open GitHub issues labeled `agent:ready` (used by both OpenCode and Hermes).
 - Check `/autoship-plan` (OpenCode) or `bash hooks/hermes/plan-issues.sh` (Hermes) before starting.
 
 ### Hermes Runtime Issues
