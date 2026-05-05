@@ -1590,7 +1590,8 @@ cp -R "$SCRIPT_DIR/../.." "$PACKAGE_REPO"
   rm -rf .autoship node_modules dist
   npm install --package-lock=false --no-audit --no-fund >/dev/null
   npm run build >/dev/null
-  assert_eq "opencode-autoship $(cat VERSION)" "$(node dist/cli.js --version)" "package CLI prints version with --version"
+  package_version="v$(node -p 'require("./package.json").version')"
+  assert_eq "opencode-autoship $package_version" "$(node dist/cli.js --version)" "package CLI prints version with --version"
   CONFIG_DIR="$TMP_DIR/package-config"
   mkdir -p "$CONFIG_DIR"
   printf '%s\n' '{"plugin":["other-plugin"],"customSetting":true}' >"$CONFIG_DIR/opencode.json"
@@ -1606,6 +1607,7 @@ cp -R "$SCRIPT_DIR/../.." "$PACKAGE_REPO"
   test -d "$CONFIG_DIR/.autoship/skills" || fail "package installer copies skills"
   test -f "$CONFIG_DIR/.autoship/AGENTS.md" || fail "package installer copies AGENTS.md"
   test -f "$CONFIG_DIR/.autoship/VERSION" || fail "package installer copies VERSION"
+  assert_eq "$package_version" "$(tr -d '\n' <"$CONFIG_DIR/.autoship/VERSION")" "package installer writes VERSION from package.json"
   SYMLINK_CONFIG_DIR="$TMP_DIR/package-symlink-config"
   mkdir -p "$SYMLINK_CONFIG_DIR/.autoship"
   ln -s "$TMP_DIR" "$SYMLINK_CONFIG_DIR/.autoship/hooks"
