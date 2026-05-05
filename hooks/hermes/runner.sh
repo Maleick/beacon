@@ -202,6 +202,7 @@ for status_file in $queued; do
   # Dispatch this single issue, detached from terminal
   # Log to workspace log file for debugging
   log_file="$workspace_dir/runner.log"
+  # Prefer setsid (proper session detachment), fallback to nohup
   if command -v setsid &>/dev/null; then
     setsid bash "$0" "$issue_key" > "$log_file" 2>&1 &
   else
