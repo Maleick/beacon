@@ -116,7 +116,12 @@ if [[ -n "${1:-}" ]]; then
     # Hermes CLI available — spawn hermes chat
     cd "$worktree_path"
     # Timeout: 10 minutes (600 seconds) for atomic work
-    timeout 600 hermes chat --prompt "$workspace_dir/HERMES_PROMPT.md" --workdir "$worktree_path" || {
+    # Use gtimeout on macOS, timeout on Linux
+    TIMEOUT_CMD="timeout"
+    if command -v gtimeout &>/dev/null; then
+      TIMEOUT_CMD="gtimeout"
+    fi
+    $TIMEOUT_CMD 600 hermes chat --prompt "$workspace_dir/HERMES_PROMPT.md" --workdir "$worktree_path" || {
       exit_code=$?
       if [[ $exit_code -eq 124 ]]; then
         echo "TIMEOUT: $ISSUE_KEY exceeded 10 minutes"
@@ -131,7 +136,7 @@ if [[ -n "${1:-}" ]]; then
     }
     
     # Check result
-    result_status=$(cat "$status_file" 2>/dev/null || echo "unknown")
+    result_status=$(cat "$workspace_dir/status" 2>/dev/null || echo "unknown")
     echo "Result: $ISSUE_KEY = $result_status"
     
     if [[ "$result_status" == "COMPLETE" ]]; then
