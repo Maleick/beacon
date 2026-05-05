@@ -96,7 +96,7 @@ if [[ -n "${1:-}" ]]; then
   if command -v hermes &>/dev/null; then
     # Hermes CLI available — spawn hermes chat.
     cd "$worktree_path"
-    # Timeout: 10 minutes (600 seconds) for atomic work
+    # Timeout: configurable; default 30 minutes for AutoShip workers
     # Use gtimeout on macOS, timeout on Linux
     TIMEOUT_CMD=""
     if command -v gtimeout &>/dev/null; then
@@ -110,12 +110,13 @@ if [[ -n "${1:-}" ]]; then
       autoship_state_set set-blocked "$ISSUE_KEY" reason="timeout_unavailable"
       exit 0
     fi
-    "$TIMEOUT_CMD" 600 hermes chat -q "$(cat "$workspace_dir/HERMES_PROMPT.md")" --worktree --quiet || {
+    HERMES_WORKER_TIMEOUT_SECONDS="${HERMES_WORKER_TIMEOUT_SECONDS:-1800}"
+    "$TIMEOUT_CMD" "$HERMES_WORKER_TIMEOUT_SECONDS" hermes chat -q "$(cat "$workspace_dir/HERMES_PROMPT.md")" --worktree --quiet || {
       exit_code=$?
       if [[ $exit_code -eq 124 ]]; then
-        echo "TIMEOUT: $ISSUE_KEY exceeded 10 minutes"
+        echo "TIMEOUT: $ISSUE_KEY exceeded ${HERMES_WORKER_TIMEOUT_SECONDS}s"
         printf 'STUCK\n' >"$status_file"
-        autoship_state_set set-stuck "$ISSUE_KEY" reason="timeout_10min"
+        autoship_state_set set-stuck "$ISSUE_KEY" reason="timeout_${HERMES_WORKER_TIMEOUT_SECONDS}s"
       else
         echo "ERROR: $ISSUE_KEY exited with code $exit_code"
         printf 'BLOCKED\n' >"$status_file"
