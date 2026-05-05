@@ -195,7 +195,8 @@ for status_file in $queued; do
   fi
   
   # Dispatch this single issue
-  bash "$0" "$issue_key" &
+  nohup bash "$0" "$issue_key" > /dev/null 2>&1 &
+  disown
   
   started=$((started + 1))
 done
