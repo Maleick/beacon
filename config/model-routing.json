@@ -2,8 +2,8 @@
   "version": "2026-05-03",
   "runtime": "opencode",
   "dispatch_method": "free_first_rotation",
-  "max_concurrent": 50,
-  "notes": "max_concurrent increased to 50. Hermes delegation.max_concurrent_children synced to match.",
+  "max_concurrent": 20,
+  "notes": "max_concurrent set to 20. Hermes delegation.max_concurrent_children synced to match.",
   "tiers": [
     {
       "name": "zen_free",

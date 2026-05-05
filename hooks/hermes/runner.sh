@@ -139,6 +139,12 @@ if [[ -n "${1:-}" ]]; then
     result_status=$(cat "$workspace_dir/status" 2>/dev/null || echo "unknown")
     echo "Result: $ISSUE_KEY = $result_status"
     
+    # If still RUNNING after successful hermes chat, mark COMPLETE
+    if [[ "$result_status" == "RUNNING" ]]; then
+      printf 'COMPLETE\n' > "$workspace_dir/status"
+      result_status="COMPLETE"
+    fi
+    
     if [[ "$result_status" == "COMPLETE" ]]; then
       autoship_state_set set-complete "$ISSUE_KEY"
       # Trigger PR creation
