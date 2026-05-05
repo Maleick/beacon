@@ -55,9 +55,9 @@ WORKSPACE_PATH="$AUTOSHIP_DIR/workspaces/$ISSUE_KEY"
 
 if [[ -f "$STATE_FILE" ]] && jq -e --arg key "$ISSUE_KEY" '(.issues[$key].terminal_failure // false) == true or (.issues[$key].retry_eligible // true) == false' "$STATE_FILE" >/dev/null 2>&1; then
   mkdir -p "$WORKSPACE_PATH"
-  printf 'BLOCKED\n' > "$WORKSPACE_PATH/status"
+  printf 'BLOCKED\n' >"$WORKSPACE_PATH/status"
   reason=$(jq -r --arg key "$ISSUE_KEY" '.issues[$key].escalation_reason // "retry limit reached"' "$STATE_FILE" 2>/dev/null || echo "retry limit reached")
-  printf '%s\n' "$reason" > "$WORKSPACE_PATH/BLOCKED_REASON.txt"
+  printf '%s\n' "$reason" >"$WORKSPACE_PATH/BLOCKED_REASON.txt"
   echo "BLOCKED $ISSUE_KEY: $reason"
   exit 0
 fi
@@ -89,7 +89,7 @@ if [[ ! "$running" =~ ^[0-9]+$ ]]; then
   running=0
 fi
 cap_note=""
-if (( running >= max_agents )); then
+if ((running >= max_agents)); then
   cap_note="CAP_REACHED: $running active / $max_agents max; workspace will remain queued"
 fi
 
@@ -113,7 +113,7 @@ resolve_model() {
     if [[ -n "$routing_log" ]]; then
       mkdir -p "$WORKSPACE_PATH"
       log_file="$WORKSPACE_PATH/routing-log.txt"
-      printf '%s\n' "$routing_log" > "$log_file"
+      printf '%s\n' "$routing_log" >"$log_file"
     fi
     printf '%s\n' "$selected_model"
     return 0
@@ -123,13 +123,13 @@ resolve_model() {
 
 resolve_role() {
   case "$1" in
-    docs|documentation) printf '%s\n' docs ;;
-    review|code_review) printf '%s\n' reviewer ;;
-    test|tests|ci_fix) printf '%s\n' tester ;;
+    docs | documentation) printf '%s\n' docs ;;
+    review | code_review) printf '%s\n' reviewer ;;
+    test | tests | ci_fix) printf '%s\n' tester ;;
     release) printf '%s\n' release ;;
-    simplify|refactor) printf '%s\n' simplifier ;;
-    plan|planning) printf '%s\n' planner ;;
-    lead|orchestration|coordination) printf '%s\n' lead ;;
+    simplify | refactor) printf '%s\n' simplifier ;;
+    plan | planning) printf '%s\n' planner ;;
+    lead | orchestration | coordination) printf '%s\n' lead ;;
     *) printf '%s\n' implementer ;;
   esac
 }
@@ -153,8 +153,8 @@ fi
 
 if [[ -z "$MODEL" ]]; then
   mkdir -p "$WORKSPACE_PATH"
-  printf 'BLOCKED\n' > "$WORKSPACE_PATH/status"
-  printf 'No configured OpenCode model is available for task type %s. Run hooks/opencode/setup.sh to choose models.\n' "$TASK_TYPE" > "$WORKSPACE_PATH/BLOCKED_REASON.txt"
+  printf 'BLOCKED\n' >"$WORKSPACE_PATH/status"
+  printf 'No configured OpenCode model is available for task type %s. Run hooks/opencode/setup.sh to choose models.\n' "$TASK_TYPE" >"$WORKSPACE_PATH/BLOCKED_REASON.txt"
   autoship_state_set set-blocked "$ISSUE_KEY" reason="no configured OpenCode model for $TASK_TYPE"
   echo "BLOCKED $ISSUE_KEY: no configured OpenCode model for $TASK_TYPE"
   exit 0
@@ -170,12 +170,12 @@ fi
 
 FULL_WORKSPACE_PATH=$(bash "$SCRIPT_DIR/create-worktree.sh" "$ISSUE_KEY" "autoship/issue-${ISSUE_NUM}")
 mkdir -p "$WORKSPACE_PATH"
-date -u +%Y-%m-%dT%H:%M:%SZ > "$WORKSPACE_PATH/started_at"
-printf 'QUEUED\n' > "$WORKSPACE_PATH/status"
-printf '%s\n' "$MODEL" > "$WORKSPACE_PATH/model"
-printf '%s\n' "$ROLE" > "$WORKSPACE_PATH/role"
+date -u +%Y-%m-%dT%H:%M:%SZ >"$WORKSPACE_PATH/started_at"
+printf 'QUEUED\n' >"$WORKSPACE_PATH/status"
+printf '%s\n' "$MODEL" >"$WORKSPACE_PATH/model"
+printf '%s\n' "$ROLE" >"$WORKSPACE_PATH/role"
 
-cat > "$WORKSPACE_PATH/AUTOSHIP_PROMPT.md" <<EOF
+cat >"$WORKSPACE_PATH/AUTOSHIP_PROMPT.md" <<EOF
 # AutoShip Agent Prompt
 
 ## Issue #$ISSUE_NUM: $TITLE
@@ -209,7 +209,7 @@ $(bash "$SCRIPT_DIR/pr-title.sh" --issue "$ISSUE_NUM" --title "$TITLE" --labels 
 EOF
 
 autoship_state_set set-queued "$ISSUE_KEY" agent="$MODEL" model="$MODEL" role="$ROLE" task_type="$TASK_TYPE"
-bash "$SCRIPT_DIR/metrics-collector.sh" record-dispatch "$ISSUE_KEY" "$MODEL" > /dev/null 2>&1 || true
+bash "$SCRIPT_DIR/metrics-collector.sh" record-dispatch "$ISSUE_KEY" "$MODEL" >/dev/null 2>&1 || true
 
 echo "Queued issue #$ISSUE_NUM for $MODEL ($TASK_TYPE, role=$ROLE)"
 [[ -n "$cap_note" ]] && echo "$cap_note"

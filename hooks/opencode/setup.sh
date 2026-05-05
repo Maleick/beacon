@@ -71,7 +71,10 @@ parse_args() {
         shift
         ;;
       --max-agents)
-        [[ $# -ge 2 ]] || { echo "Error: --max-agents requires a value" >&2; usage 2; }
+        [[ $# -ge 2 ]] || {
+          echo "Error: --max-agents requires a value" >&2
+          usage 2
+        }
         MAX_AGENTS="$2"
         shift 2
         ;;
@@ -80,7 +83,10 @@ parse_args() {
         shift
         ;;
       --labels)
-        [[ $# -ge 2 ]] || { echo "Error: --labels requires a value" >&2; usage 2; }
+        [[ $# -ge 2 ]] || {
+          echo "Error: --labels requires a value" >&2
+          usage 2
+        }
         LABELS="$2"
         shift 2
         ;;
@@ -93,7 +99,10 @@ parse_args() {
         shift
         ;;
       --planner-model)
-        [[ $# -ge 2 ]] || { echo "Error: --planner-model requires a value" >&2; usage 2; }
+        [[ $# -ge 2 ]] || {
+          echo "Error: --planner-model requires a value" >&2
+          usage 2
+        }
         ROLE_OVERRIDES_PROVIDED=1
         PLANNER_MODEL="$2"
         COORDINATOR_MODEL="$2"
@@ -112,7 +121,10 @@ parse_args() {
         shift
         ;;
       --lead-model)
-        [[ $# -ge 2 ]] || { echo "Error: --lead-model requires a value" >&2; usage 2; }
+        [[ $# -ge 2 ]] || {
+          echo "Error: --lead-model requires a value" >&2
+          usage 2
+        }
         ROLE_OVERRIDES_PROVIDED=1
         LEAD_MODEL="$2"
         shift 2
@@ -123,7 +135,10 @@ parse_args() {
         shift
         ;;
       --orchestrator-model)
-        [[ $# -ge 2 ]] || { echo "Error: --orchestrator-model requires a value" >&2; usage 2; }
+        [[ $# -ge 2 ]] || {
+          echo "Error: --orchestrator-model requires a value" >&2
+          usage 2
+        }
         ROLE_OVERRIDES_PROVIDED=1
         ORCHESTRATOR_MODEL="$2"
         shift 2
@@ -134,7 +149,10 @@ parse_args() {
         shift
         ;;
       --reviewer-model)
-        [[ $# -ge 2 ]] || { echo "Error: --reviewer-model requires a value" >&2; usage 2; }
+        [[ $# -ge 2 ]] || {
+          echo "Error: --reviewer-model requires a value" >&2
+          usage 2
+        }
         ROLE_OVERRIDES_PROVIDED=1
         REVIEWER_MODEL="$2"
         shift 2
@@ -145,7 +163,10 @@ parse_args() {
         shift
         ;;
       --worker-models)
-        [[ $# -ge 2 ]] || { echo "Error: --worker-models requires a value" >&2; usage 2; }
+        [[ $# -ge 2 ]] || {
+          echo "Error: --worker-models requires a value" >&2
+          usage 2
+        }
         SELECTED_MODELS="$2"
         shift 2
         ;;
@@ -153,7 +174,7 @@ parse_args() {
         SELECTED_MODELS="${1#*=}"
         shift
         ;;
-      -h|--help)
+      -h | --help)
         usage 0
         ;;
       --)
@@ -188,7 +209,7 @@ if [[ -f "$ROUTING_FILE" && -z "$SELECTED_MODELS" && "$REFRESH_MODELS" != "1" &&
   if jq -e '(.models // []) | length > 0' "$ROUTING_FILE" >/dev/null 2>&1; then
     if [[ ! -f "$CONFIG_FILE" ]]; then
       jq -n --argjson max "$MAX_AGENTS" --arg labels "$LABELS" \
-        '{runtime: "opencode", maxConcurrentAgents: $max, max_agents: $max, models: [], labels: ($labels | split(",")), refreshModels: false, policyProfile: "default", cargoConcurrencyCap: 8, cargoTargetIsolationThreshold: 8, cargoTimeoutSeconds: 120, mergeStrategy: "safe", quotaRouting: true, workerCwdLock: true, truncationSalvage: true, workflowRunnerDefault: ""}' > "$CONFIG_FILE"
+        '{runtime: "opencode", maxConcurrentAgents: $max, max_agents: $max, models: [], labels: ($labels | split(",")), refreshModels: false, policyProfile: "default", cargoConcurrencyCap: 8, cargoTargetIsolationThreshold: 8, cargoTimeoutSeconds: 120, mergeStrategy: "safe", quotaRouting: true, workerCwdLock: true, truncationSalvage: true, workflowRunnerDefault: ""}' >"$CONFIG_FILE"
     fi
     echo "AutoShip OpenCode setup already configured"
     echo "Model routing preserved: $ROUTING_FILE"
@@ -379,7 +400,7 @@ with open(config_path, "w", encoding="utf-8") as f:
     f.write("\n")
 PY
 
-date -u +%Y-%m-%dT%H:%M:%SZ > "$AUTOSHIP_DIR/.onboarded"
+date -u +%Y-%m-%dT%H:%M:%SZ >"$AUTOSHIP_DIR/.onboarded"
 echo "AutoShip OpenCode setup complete"
 echo "Configured models: $SELECTED_MODELS"
 echo "Max agents: $MAX_AGENTS"

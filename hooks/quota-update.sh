@@ -11,7 +11,7 @@ QUOTA_FILE="$REPO_ROOT/.autoship/quota.json"
 ensure_init() {
   mkdir -p "$(dirname "$QUOTA_FILE")"
   if [[ ! -f "$QUOTA_FILE" ]]; then
-    jq -n '{opencode: {available: true, quota_pct: -1, quota_source: "provider", dispatches: 0}}' > "$QUOTA_FILE"
+    jq -n '{opencode: {available: true, quota_pct: -1, quota_source: "provider", dispatches: 0}}' >"$QUOTA_FILE"
   fi
 }
 
@@ -19,7 +19,7 @@ cmd="${1:-check}"
 shift
 
 case "$cmd" in
-  init|refresh)
+  init | refresh)
     rm -f "$QUOTA_FILE"
     ensure_init
     echo "OpenCode provider status initialized"
@@ -30,14 +30,14 @@ case "$cmd" in
     ;;
   decrement)
     ensure_init
-    jq '.opencode.dispatches = ((.opencode.dispatches // 0) + 1)' "$QUOTA_FILE" > "$QUOTA_FILE.tmp" && mv "$QUOTA_FILE.tmp" "$QUOTA_FILE"
+    jq '.opencode.dispatches = ((.opencode.dispatches // 0) + 1)' "$QUOTA_FILE" >"$QUOTA_FILE.tmp" && mv "$QUOTA_FILE.tmp" "$QUOTA_FILE"
     echo "Recorded OpenCode dispatch"
     ;;
   stuck)
     ensure_init
     echo "OpenCode worker stuck event recorded by workspace status"
     ;;
-  set|reset|advisor-call)
+  set | reset | advisor-call)
     ensure_init
     echo "No provider quota mutation required for OpenCode-only AutoShip"
     ;;

@@ -30,7 +30,7 @@ trap 'status=$?; capture_e2e_failure "$status"; rm -rf "$CONFIG_HOME" "$REAL_CON
 export XDG_CONFIG_HOME="$CONFIG_HOME"
 export OPENCODE_CONFIG_DIR="$REAL_CONFIG_DIR/opencode"
 mkdir -p "$OPENCODE_CONFIG_DIR"
-cat > "$OPENCODE_CONFIG_DIR/opencode.json" <<'JSON'
+cat >"$OPENCODE_CONFIG_DIR/opencode.json" <<'JSON'
 {"plugin":["real-user-plugin"]}
 JSON
 BIN_DIR="$CONFIG_HOME/bin"

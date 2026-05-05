@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 ISSUE_TITLE="${1:-}"
-ISSUE_BODY="${2:-}"  
+ISSUE_BODY="${2:-}"
 ISSUE_LABELS="${3:-}"
 WORKTREE_PATH="${4:-$PWD}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -36,7 +36,7 @@ for struct in $(echo "$pjson" | jq -r '.hotStructs | to_entries | .[].key'); do
   short="${struct##*::}"
   if echo "$TEXT" | grep -qiF "$short"; then
     echo "- Hot fixture registry for $struct:"
-    jq -r --arg s "$struct" '.hotStructs[$s][]' <<< "$pjson" | sed 's/^/  - /'
+    jq -r --arg s "$struct" '.hotStructs[$s][]' <<<"$pjson" | sed 's/^/  - /'
   fi
 done
 

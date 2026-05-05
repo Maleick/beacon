@@ -48,25 +48,25 @@ if [[ -n "${1:-}" ]]; then
   ISSUE_KEY="$1"
   workspace_dir="$WORKSPACES_DIR/$ISSUE_KEY"
   status_file="$workspace_dir/status"
-  
+
   if [[ ! -f "$status_file" ]]; then
     echo "Error: workspace not found for $ISSUE_KEY" >&2
     exit 1
   fi
-  
+
   current_status=$(cat "$status_file" 2>/dev/null || echo "unknown")
   if [[ "$current_status" == "COMPLETE" || "$current_status" == "BLOCKED" ]]; then
     echo "Issue $ISSUE_KEY status=$current_status — not dispatchable"
     exit 0
   fi
-  
+
   # Mark running
-  printf 'RUNNING\n' > "$status_file"
+  printf 'RUNNING\n' >"$status_file"
   autoship_state_set set-running "$ISSUE_KEY" agent="hermes/default"
-  
+
   # Extract issue number from key
   ISSUE_NUM=$(echo "$ISSUE_KEY" | sed 's/issue-//')
-  
+
   # Find the worktree path
   worktree_path=""
   HERMES_TARGET_REPO_PATH="${HERMES_TARGET_REPO_PATH:-$REPO_ROOT}"
@@ -82,16 +82,16 @@ if [[ -n "${1:-}" ]]; then
       fi
     done
   fi
-  
+
   if [[ -z "$worktree_path" || ! -d "$worktree_path" ]]; then
     echo "Error: worktree not found for issue-$ISSUE_NUM" >&2
-    printf 'BLOCKED\n' > "$status_file"
+    printf 'BLOCKED\n' >"$status_file"
     autoship_state_set set-blocked "$ISSUE_KEY" reason="worktree not found"
     exit 1
   fi
 
   echo "Dispatching $ISSUE_KEY in $worktree_path"
-  
+
   # Execute with Hermes CLI in both cron and active-session contexts.
   if command -v hermes &>/dev/null; then
     # Hermes CLI available — spawn hermes chat.
@@ -106,7 +106,7 @@ if [[ -n "${1:-}" ]]; then
     fi
     if [[ -z "$TIMEOUT_CMD" ]]; then
       echo "Error: timeout/gtimeout required for Hermes runner" >&2
-      printf 'BLOCKED\n' > "$status_file"
+      printf 'BLOCKED\n' >"$status_file"
       autoship_state_set set-blocked "$ISSUE_KEY" reason="timeout_unavailable"
       exit 0
     fi
@@ -114,26 +114,26 @@ if [[ -n "${1:-}" ]]; then
       exit_code=$?
       if [[ $exit_code -eq 124 ]]; then
         echo "TIMEOUT: $ISSUE_KEY exceeded 10 minutes"
-        printf 'STUCK\n' > "$status_file"
+        printf 'STUCK\n' >"$status_file"
         autoship_state_set set-stuck "$ISSUE_KEY" reason="timeout_10min"
       else
         echo "ERROR: $ISSUE_KEY exited with code $exit_code"
-        printf 'BLOCKED\n' > "$status_file"
+        printf 'BLOCKED\n' >"$status_file"
         autoship_state_set set-blocked "$ISSUE_KEY" reason="exit_code_$exit_code"
       fi
       exit 0
     }
-    
+
     # Check result using absolute path
     result_status=$(cat "$workspace_dir/status" 2>/dev/null || echo "unknown")
     echo "Result: $ISSUE_KEY = $result_status"
-    
+
     # If still RUNNING after successful hermes chat, mark COMPLETE
     if [[ "$result_status" == "RUNNING" ]]; then
-      printf 'COMPLETE\n' > "$workspace_dir/status"
+      printf 'COMPLETE\n' >"$workspace_dir/status"
       result_status="COMPLETE"
     fi
-    
+
     if [[ "$result_status" == "COMPLETE" ]]; then
       autoship_state_set set-complete "$ISSUE_KEY"
       # Trigger PR creation
@@ -145,10 +145,10 @@ if [[ -n "${1:-}" ]]; then
     fi
   else
     echo "Hermes not available — cannot execute"
-    printf 'BLOCKED\n' > "$status_file"
+    printf 'BLOCKED\n' >"$status_file"
     autoship_state_set set-blocked "$ISSUE_KEY" reason="hermes_unavailable"
   fi
-  
+
   exit 0
 fi
 
@@ -175,25 +175,25 @@ for status_file in $queued; do
   if [[ "$started" -ge "$available_slots" ]]; then
     break
   fi
-  
+
   workspace_dir=$(dirname "$status_file")
   issue_key=$(basename "$workspace_dir")
-  
+
   if [[ ! -f "$workspace_dir/HERMES_PROMPT.md" ]]; then
     continue
   fi
-  
+
   # Dispatch this single issue, detached from terminal
   # Log to workspace log file for debugging
   log_file="$workspace_dir/runner.log"
   # Prefer setsid (proper session detachment), fallback to nohup
   if command -v setsid &>/dev/null; then
-    setsid bash "$0" "$issue_key" > "$log_file" 2>&1 &
+    setsid bash "$0" "$issue_key" >"$log_file" 2>&1 &
   else
     # macOS fallback: use nohup + subshell + redirect to detach
-    (nohup bash "$0" "$issue_key" > "$log_file" 2>&1 &) &
+    (nohup bash "$0" "$issue_key" >"$log_file" 2>&1 &) &
   fi
-  
+
   started=$((started + 1))
 done
 
@@ -203,10 +203,10 @@ echo "Started $started Hermes workers"
 # The cron will call runner again to check progress
 
 # Auto-cleanup completed worktrees after batch
-if [[ "$started" -gt  0 ]]; then
+if [[ "$started" -gt 0 ]]; then
   echo "Running worktree cleanup..."
   bash "$SCRIPT_DIR/cleanup-worktrees.sh" --verbose
-  
+
   # Auto-prune if thresholds exceeded
   echo "Checking auto-prune thresholds..."
   bash "$SCRIPT_DIR/auto-prune.sh" || echo "Auto-prune triggered (thresholds exceeded)"

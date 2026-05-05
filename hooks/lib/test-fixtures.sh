@@ -21,7 +21,7 @@ copy_hooks() {
   shift
   local script_dir
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../opencode" && pwd)"
-  
+
   for hook in "$@"; do
     local src="$script_dir/$hook"
     local dest="$repo_path/hooks/opencode/$hook"
@@ -41,7 +41,7 @@ create_mock_opencode() {
   local repo_path="$1"
   local exit_code="${2:-0}"
   local output="${3:-ok}"
-  cat > "$repo_path/bin/opencode" <<SH
+  cat >"$repo_path/bin/opencode" <<SH
 #!/usr/bin/env bash
 printf '%s\n' "$output"
 exit $exit_code
@@ -55,7 +55,7 @@ create_state() {
   local repo_path="$1"
   local state_json="$2"
   mkdir -p "$repo_path/.autoship"
-  echo "$state_json" > "$repo_path/.autoship/state.json"
+  echo "$state_json" >"$repo_path/.autoship/state.json"
 }
 
 # Create a workspace status file
@@ -65,7 +65,7 @@ set_workspace_status() {
   local issue_key="$2"
   local status="$3"
   mkdir -p "$repo_path/.autoship/workspaces/$issue_key"
-  printf '%s\n' "$status" > "$repo_path/.autoship/workspaces/$issue_key/status"
+  printf '%s\n' "$status" >"$repo_path/.autoship/workspaces/$issue_key/status"
 }
 
 # Wait for a condition with polling
@@ -75,7 +75,7 @@ wait_for() {
   local check_cmd="$2"
   local message="${3:-condition not met}"
   local i
-  for ((i=0; i<timeout; i++)); do
+  for ((i = 0; i < timeout; i++)); do
     if eval "$check_cmd" >/dev/null 2>&1; then
       return 0
     fi
@@ -91,7 +91,7 @@ create_routing() {
   local repo_path="$1"
   local routing_json="$2"
   mkdir -p "$repo_path/.autoship"
-  echo "$routing_json" > "$repo_path/config/model-routing.json"
+  echo "$routing_json" >"$repo_path/config/model-routing.json"
 }
 
 # Create a config.json file
@@ -100,7 +100,7 @@ create_config() {
   local repo_path="$1"
   local config_json="$2"
   mkdir -p "$repo_path/.autoship"
-  echo "$config_json" > "$repo_path/.autoship/config.json"
+  echo "$config_json" >"$repo_path/.autoship/config.json"
 }
 
 # Export all functions for use in sourced scripts

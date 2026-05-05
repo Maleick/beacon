@@ -76,8 +76,8 @@ fi
 
 if [[ "$HERMES_AVAILABLE" != true ]]; then
   mkdir -p "$WORKSPACE_PATH"
-  printf 'BLOCKED\n' > "$WORKSPACE_PATH/status"
-  printf 'Hermes CLI not found. Install with: npm install -g hermes-agent\n' > "$WORKSPACE_PATH/BLOCKED_REASON.txt"
+  printf 'BLOCKED\n' >"$WORKSPACE_PATH/status"
+  printf 'Hermes CLI not found. Install with: npm install -g hermes-agent\n' >"$WORKSPACE_PATH/BLOCKED_REASON.txt"
   autoship_state_set set-blocked "$ISSUE_KEY" reason="hermes CLI not found"
   echo "BLOCKED $ISSUE_KEY: hermes CLI not found"
   exit 0
@@ -89,7 +89,7 @@ if [[ ! "$running" =~ ^[0-9]+$ ]]; then
 fi
 
 cap_note=""
-if (( running >= MAX )); then
+if ((running >= MAX)); then
   cap_note="CAP_REACHED: $running active / $MAX max; workspace will remain queued"
 fi
 
@@ -116,13 +116,13 @@ fi
 
 # Log model selection
 mkdir -p "$AUTOSHIP_DIR/logs"
-echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) issue=$ISSUE_NUM model=$MODEL" >> "$AUTOSHIP_DIR/logs/model-selection.log"
+echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) issue=$ISSUE_NUM model=$MODEL" >>"$AUTOSHIP_DIR/logs/model-selection.log"
 
 # Ensure workspace directory exists before writing model
 mkdir -p "$WORKSPACE_PATH"
 
 # Write model to workspace
-printf '%s\n' "$MODEL" > "$WORKSPACE_PATH/model"
+printf '%s\n' "$MODEL" >"$WORKSPACE_PATH/model"
 
 if [[ "$DRY_RUN" == true ]]; then
   echo "Dry run: would dispatch issue #$ISSUE_NUM to Hermes ($TASK_TYPE)"
@@ -142,10 +142,10 @@ if [[ -z "$FULL_WORKSPACE_PATH" || ! -d "$FULL_WORKSPACE_PATH" ]]; then
   exit 1
 fi
 mkdir -p "$WORKSPACE_PATH"
-date -u +%Y-%m-%dT%H:%M:%SZ > "$WORKSPACE_PATH/started_at"
-printf 'QUEUED\n' > "$WORKSPACE_PATH/status"
-printf '%s\n' "$MODEL" > "$WORKSPACE_PATH/model"
-printf '%s\n' "$ROLE" > "$WORKSPACE_PATH/role"
+date -u +%Y-%m-%dT%H:%M:%SZ >"$WORKSPACE_PATH/started_at"
+printf 'QUEUED\n' >"$WORKSPACE_PATH/status"
+printf '%s\n' "$MODEL" >"$WORKSPACE_PATH/model"
+printf '%s\n' "$ROLE" >"$WORKSPACE_PATH/role"
 
 # Write Hermes-specific prompt with AutoShip constraints. Python avoids shell
 # expansion of issue titles/bodies that may contain backticks or $().

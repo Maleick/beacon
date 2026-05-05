@@ -49,8 +49,8 @@ if [[ -n "$POOL" ]]; then
 fi
 
 if [[ "$LOG" == true ]]; then
-# Shared jq filter definitions
-JQ_DEFS='
+  # Shared jq filter definitions
+  JQ_DEFS='
 def hist($id):
   (($history[0] // {})[$id] // {success: 0, fail: 0});
 def circuit_open($id):
@@ -101,8 +101,8 @@ def rotated_models:
   end;
 '
 
-if [[ "$LOG" == true ]]; then
-  jq -r --arg task "$TASK_TYPE" --argjson issue "$ISSUE_NUM" --slurpfile history "$HISTORY_FILE" --slurpfile circuit "$CIRCUIT_FILE" --argjson now "$(date +%s)" "${JQ_DEFS}
+  if [[ "$LOG" == true ]]; then
+    jq -r --arg task "$TASK_TYPE" --argjson issue "$ISSUE_NUM" --slurpfile history "$HISTORY_FILE" --slurpfile circuit "$CIRCUIT_FILE" --argjson now "$(date +%s)" "${JQ_DEFS}
 rotated_models |
 . as \$candidates |
 if length > 0 then
@@ -113,10 +113,10 @@ if length > 0 then
 else
   \"routing_log:\\nfinal_selection:\"
 end" "$ROUTING_FILE"
-  exit 0
-fi
+    exit 0
+  fi
 
-jq -r --arg task "$TASK_TYPE" --argjson issue "$ISSUE_NUM" --slurpfile history "$HISTORY_FILE" --slurpfile circuit "$CIRCUIT_FILE" --argjson now "$(date +%s)" "${JQ_DEFS}
+  jq -r --arg task "$TASK_TYPE" --argjson issue "$ISSUE_NUM" --slurpfile history "$HISTORY_FILE" --slurpfile circuit "$CIRCUIT_FILE" --argjson now "$(date +%s)" "${JQ_DEFS}
 rotated_models |
 if length > 0 then .[0].id else empty end" "$ROUTING_FILE"
   exit 0

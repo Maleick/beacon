@@ -77,7 +77,7 @@ fi
 
 echo "=== Test: role selection is separate from worker selection ==="
 ROLE_ROUTING="$TMP_DIR/role-routing.json"
-cat > "$ROLE_ROUTING" <<'JSON'
+cat >"$ROLE_ROUTING" <<'JSON'
 {
   "roles": {
     "planner": "openai/gpt-5.5",
@@ -115,7 +115,7 @@ assert_eq "opencode/nemotron-3-super-free" "$POOL_SELECTION" "select-model.sh --
 echo "=== Test: select-model.sh round-robins compatible worker models by issue ==="
 ROUND_ROBIN_REPO="$TMP_DIR/round-robin-repo"
 mkdir -p "$ROUND_ROBIN_REPO/.autoship"
-cat > "$ROUND_ROBIN_REPO/.autoship/model-routing.json" <<'JSON'
+cat >"$ROUND_ROBIN_REPO/.autoship/model-routing.json" <<'JSON'
 {
   "models": [
     {"id": "opencode/free-a", "cost": "free", "strength": 80, "max_task_types": ["medium_code"]},
@@ -132,7 +132,7 @@ assert_eq "opencode/free-a,opencode/free-b,opencode/free-c" "$RR_300,$RR_301,$RR
 echo "=== Test: select-model.sh uses orchestrator advisor for unsupported complex tasks ==="
 ADVISOR_REPO="$TMP_DIR/advisor-repo"
 mkdir -p "$ADVISOR_REPO/.autoship"
-cat > "$ADVISOR_REPO/.autoship/model-routing.json" <<'JSON'
+cat >"$ADVISOR_REPO/.autoship/model-routing.json" <<'JSON'
 {
   "roles": {
     "orchestrator": "opencode-go/kimi-k2.6"
@@ -192,7 +192,7 @@ NO_GPT_REPO="$TMP_DIR/no-gpt-role-repo"
 mkdir -p "$NO_GPT_REPO/bin" "$NO_GPT_REPO/autoship/hooks/opencode"
 cp "$SCRIPT_DIR/setup.sh" "$SCRIPT_DIR/model-parser.sh" "$NO_GPT_REPO/autoship/hooks/opencode/"
 chmod +x "$NO_GPT_REPO/autoship/hooks/opencode/setup.sh"
-cat > "$NO_GPT_REPO/bin/opencode" <<'SH'
+cat >"$NO_GPT_REPO/bin/opencode" <<'SH'
 #!/usr/bin/env bash
 if [[ "$1" == "models" ]]; then
   printf '%s\n' opencode/nemotron-3-super-free opencode/minimax-m2.5-free
@@ -200,7 +200,7 @@ if [[ "$1" == "models" ]]; then
 fi
 exit 0
 SH
-cat > "$NO_GPT_REPO/bin/gh" <<'SH'
+cat >"$NO_GPT_REPO/bin/gh" <<'SH'
 #!/usr/bin/env bash
 if [[ "$1 $2" == "auth status" ]]; then
   exit 0

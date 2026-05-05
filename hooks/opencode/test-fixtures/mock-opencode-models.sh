@@ -13,7 +13,7 @@ install_mock_opencode_models_fixture() {
   local bin_dir="$1"
   mkdir -p "$bin_dir"
 
-  cat > "$bin_dir/opencode" <<'SH'
+  cat >"$bin_dir/opencode" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -32,7 +32,7 @@ printf '\n' >&2
 exit 99
 SH
 
-  cat > "$bin_dir/gh" <<'SH'
+  cat >"$bin_dir/gh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 

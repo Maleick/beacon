@@ -71,11 +71,11 @@ current_max="${1:-15}"
 load_status="ok"
 recommended_max="$current_max"
 
-if (( $(echo "$cpu_pct > 95" | bc -l 2>/dev/null || echo 0) )) || (( $(echo "$mem_pct > 95" | bc -l 2>/dev/null || echo 0) )); then
+if (($(echo "$cpu_pct > 95" | bc -l 2>/dev/null || echo 0))) || (($(echo "$mem_pct > 95" | bc -l 2>/dev/null || echo 0))); then
   load_status="critical"
   recommended_max=$((current_max / 4))
   [[ "$recommended_max" -lt 1 ]] && recommended_max=1
-elif (( $(echo "$cpu_pct > 80" | bc -l 2>/dev/null || echo 0) )) || (( $(echo "$mem_pct > 80" | bc -l 2>/dev/null || echo 0) )); then
+elif (($(echo "$cpu_pct > 80" | bc -l 2>/dev/null || echo 0))) || (($(echo "$mem_pct > 80" | bc -l 2>/dev/null || echo 0))); then
   load_status="high"
   recommended_max=$((current_max / 2))
   [[ "$recommended_max" -lt 1 ]] && recommended_max=1

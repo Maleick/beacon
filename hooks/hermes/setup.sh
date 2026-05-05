@@ -48,7 +48,7 @@ ROUTING='{
   "notes": "Hermes uses the provider/model configured in ~/.hermes/config.yaml"
 }'
 
-echo "$ROUTING" | jq . > "$AUTOSHIP_DIR/hermes-model-routing.json"
+echo "$ROUTING" | jq . >"$AUTOSHIP_DIR/hermes-model-routing.json"
 
 echo "Hermes runtime configured:"
 echo "  CLI available: $HERMES_AVAILABLE"
@@ -60,7 +60,7 @@ echo "  Routing file: $AUTOSHIP_DIR/hermes-model-routing.json"
 if [[ -f "$AUTOSHIP_DIR/model-routing.json" ]]; then
   jq --slurpfile hermes "$AUTOSHIP_DIR/hermes-model-routing.json" '
     .runtimes.hermes = $hermes[0]
-  ' "$AUTOSHIP_DIR/model-routing.json" > "$AUTOSHIP_DIR/model-routing.json.tmp" && \
-  mv "$AUTOSHIP_DIR/model-routing.json.tmp" "$AUTOSHIP_DIR/model-routing.json"
+  ' "$AUTOSHIP_DIR/model-routing.json" >"$AUTOSHIP_DIR/model-routing.json.tmp" \
+    && mv "$AUTOSHIP_DIR/model-routing.json.tmp" "$AUTOSHIP_DIR/model-routing.json"
   echo "  Updated main model-routing.json with Hermes runtime"
 fi

@@ -29,4 +29,4 @@ json=$(jq -n --argjson opencode "$opencode_json" --argjson gemini "$gemini_json"
 echo "$json"
 
 mkdir -p "$REPO_ROOT/.autoship"
-echo "$json" | jq '.' > "${QUOTA_FILE}.tmp" && mv "${QUOTA_FILE}.tmp" "$QUOTA_FILE"
+echo "$json" | jq '.' >"${QUOTA_FILE}.tmp" && mv "${QUOTA_FILE}.tmp" "$QUOTA_FILE"

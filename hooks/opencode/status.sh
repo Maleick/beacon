@@ -5,8 +5,14 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --repo) REPO_ROOT="$2"; shift 2 ;;
-    *) echo "Unknown argument: $1" >&2; exit 2 ;;
+    --repo)
+      REPO_ROOT="$2"
+      shift 2
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 2
+      ;;
   esac
 done
 
@@ -61,14 +67,14 @@ if [[ -d "$WORKSPACES_DIR" ]]; then
   for dir in "$WORKSPACES_DIR"/*/; do
     [[ -d "$dir" ]] || continue
     if [[ -f "$dir/status" ]]; then
-      tr -d '[:space:]' < "$dir/status"
+      tr -d '[:space:]' <"$dir/status"
       printf '\n'
     else
       printf 'UNKNOWN\n'
     fi
-  done > "$workspace_counts"
+  done >"$workspace_counts"
 else
-  : > "$workspace_counts"
+  : >"$workspace_counts"
 fi
 
 running_ws=$(grep -c '^RUNNING$' "$workspace_counts" 2>/dev/null || true)
