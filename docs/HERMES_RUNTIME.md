@@ -55,7 +55,8 @@ The default target repo is `Maleick/TextQuest`. Override via `HERMES_TARGET_REPO
 |----------|---------|---------|
 | `HERMES_TARGET_REPO` | `Maleick/TextQuest` | GitHub repo slug for issue/PR operations |
 | `HERMES_TARGET_REPO_PATH` | `$HOME/Projects/TextQuest` | Local filesystem path to the target repo (used for worktree discovery) |
-| `HERMES_SESSION_ID` | *(unset)* | Set when running inside a Hermes session; triggers `delegate_task` dispatch instead of `hermes chat` CLI |
+| `HERMES_SESSION_ID` | *(unset)* | Set when running inside a Hermes session; dispatch runs immediately instead of waiting for cron |
+| `HERMES_BASE_BRANCH` | detected default branch or `main` | PR base branch used in generated Hermes prompts |
 | `HERMES_CWD` | *(unset)* | Hermes session working directory; part of active-session detection |
 | `HERMES_PROVIDER` | *(unset)* | Active Hermes provider name; part of active-session detection |
 | `HERMES_LABELS` | `autoship:ready-simple` | Comma-separated label filter for `plan-issues.sh` |
@@ -67,7 +68,7 @@ The default target repo is `Maleick/TextQuest`. Override via `HERMES_TARGET_REPO
 - `HERMES_CWD`
 - `HERMES_PROVIDER`
 
-When active, `dispatch.sh` immediately invokes `runner.sh` via `delegate_task` rather than queuing for external cron dispatch.
+When active, `dispatch.sh` immediately invokes `runner.sh` rather than waiting for external cron dispatch.
 
 ---
 
@@ -86,9 +87,7 @@ dispatch.sh  <-->  model-router.sh  (model selection)
     v
 runner.sh  (single-issue or batch mode)
     |
-    +--->  Inside Hermes session?  -->  delegate_task marker (DELEGATED)
-    |
-    +--->  hermes CLI available?   -->  `timeout 600 hermes chat --prompt ...`
+    +--->  hermes CLI available?   -->  `timeout 600 hermes chat -q ...`
     |
     v
 status transitions:  QUEUED -> RUNNING -> COMPLETE / BLOCKED / STUCK
@@ -127,7 +126,6 @@ cronjob-dispatch.sh
 | `COMPLETE` | Work finished, PR created, ready for merge | Hermes agent / `runner.sh` |
 | `BLOCKED` | Cannot proceed (missing CLI, missing worktree, etc.) | `dispatch.sh`, `runner.sh` |
 | `STUCK` | Timeout exceeded (10 min) or agent hung | `runner.sh` |
-| `DELEGATED` | Marker for parent-agent `delegate_task` handoff | `runner.sh` (inside session) |
 
 ### 4.2 Transition Rules
 

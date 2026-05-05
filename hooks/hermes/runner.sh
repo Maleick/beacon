@@ -92,41 +92,25 @@ if [[ -n "${1:-}" ]]; then
 
   echo "Dispatching $ISSUE_KEY in $worktree_path"
   
-  # Execute via delegate_task if inside Hermes session, else hermes chat
-  if [[ -n "${HERMES_SESSION_ID:-}" ]]; then
-    # Inside Hermes — use delegate_task for parallel execution
-    echo "Inside Hermes session — using delegate_task..."
-
-    # Read the prompt content
-    prompt_content=$(cat "$workspace_dir/HERMES_PROMPT.md" 2>/dev/null || echo "Complete issue #$ISSUE_NUM in $worktree_path")
-
-    # delegate_task is available in this Hermes session
-    # The parent agent will receive the task and execute it
-    echo "DELEGATE_TASK_READY: $ISSUE_KEY"
-    echo "Worktree: $worktree_path"
-    echo "Prompt: $workspace_dir/HERMES_PROMPT.md"
-
-    # Write a marker file that the parent can detect
-    printf 'DELEGATED\n' > "$status_file"
-
-    # The parent Hermes agent should:
-    # 1. Detect DELEGATED status
-    # 2. Read HERMES_PROMPT.md
-    # 3. Call delegate_task with the prompt as goal
-    # 4. Update status to COMPLETE/BLOCKED/STUCK based on result
-
-    echo "Parent agent should now call delegate_task for $ISSUE_KEY"
-
-  elif command -v hermes &>/dev/null; then
-    # Hermes CLI available — spawn hermes chat
+  # Execute with Hermes CLI in both cron and active-session contexts.
+  if command -v hermes &>/dev/null; then
+    # Hermes CLI available — spawn hermes chat.
     cd "$worktree_path"
     # Timeout: 10 minutes (600 seconds) for atomic work
     # Use gtimeout on macOS, timeout on Linux
-    TIMEOUT_CMD="timeout"
+    TIMEOUT_CMD=""
     if command -v gtimeout &>/dev/null; then
       TIMEOUT_CMD="gtimeout"
+    elif command -v timeout &>/dev/null; then
+      TIMEOUT_CMD="timeout"
     fi
-    $TIMEOUT_CMD 600 hermes chat -q "$(cat "$workspace_dir/HERMES_PROMPT.md")" --worktree --quiet || {
+    if [[ -z "$TIMEOUT_CMD" ]]; then
+      echo "Error: timeout/gtimeout required for Hermes runner" >&2
+      printf 'BLOCKED\n' > "$status_file"
+      autoship_state_set set-blocked "$ISSUE_KEY" reason="timeout_unavailable"
+      exit 0
+    fi
+    "$TIMEOUT_CMD" 600 hermes chat -q "$(cat "$workspace_dir/HERMES_PROMPT.md")" --worktree --quiet || {
       exit_code=$?
       if [[ $exit_code -eq 124 ]]; then
         echo "TIMEOUT: $ISSUE_KEY exceeded 10 minutes"

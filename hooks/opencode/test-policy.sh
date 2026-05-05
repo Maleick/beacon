@@ -57,6 +57,20 @@ assert_canonical_inventory
 
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+if ! grep -A4 'actions/setup-node@v4' "$REPO_ROOT/.github/workflows/release.yml" | grep -Eq "node-version: ['\"]?(22|24)['\"]?"; then
+  fail "release workflow must use Node 22 or 24 for semantic-release"
+fi
+grep -F '"$HOOKS_DIR/hermes"/*.sh' "$SCRIPT_DIR/check.sh" >/dev/null \
+  || fail "check.sh syntax check must include Hermes hooks"
+if grep -Eq 'DELEGATED|DELEGATE_TASK_READY|Parent agent should now call delegate_task' "$REPO_ROOT/hooks/hermes/runner.sh"; then
+  fail "Hermes runner must execute production work instead of writing delegate_task markers"
+fi
+if grep -F -- '--base master' "$REPO_ROOT/hooks/hermes/dispatch.sh" >/dev/null; then
+  fail "Hermes prompt must not hardcode master as PR base"
+fi
+grep -F 'HERMES_BASE_BRANCH' "$REPO_ROOT/hooks/hermes/dispatch.sh" >/dev/null \
+  || fail "Hermes dispatch must support configurable or detected base branch"
+
 POLICY_REPO="$TMP_DIR/policy-repo"
 mkdir -p "$POLICY_REPO/.autoship" "$POLICY_REPO/hooks/opencode" "$POLICY_REPO/policies"
 git init -q "$POLICY_REPO"
@@ -293,9 +307,12 @@ chmod +x "$FALLBACK_REPO/hooks/opencode/runner.sh" "$FALLBACK_REPO/hooks/update-
 cat > "$FALLBACK_REPO/.autoship/state.json" <<'JSON'
 {"repo":"owner/repo","issues":{"issue-208":{"state":"queued","model":"opencode/paid-model","role":"implementer","attempt":1,"task_type":"medium_code"}},"stats":{},"config":{"maxConcurrentAgents":15}}
 JSON
+mkdir -p "$FALLBACK_REPO/config"
 cat > "$FALLBACK_REPO/config/model-routing.json" <<'JSON'
 {"models":[{"id":"opencode/paid-model","cost":"selected","strength":100,"max_task_types":["medium_code"]},{"id":"opencode/free-fallback","cost":"free","strength":80,"max_task_types":["medium_code"]}]}
 JSON
+# Also copy to .autoship for runner compatibility
+cp "$FALLBACK_REPO/config/model-routing.json" "$FALLBACK_REPO/.autoship/model-routing.json"
 printf 'QUEUED\n' > "$FALLBACK_REPO/.autoship/workspaces/issue-208/status"
 printf 'test prompt\n' > "$FALLBACK_REPO/.autoship/workspaces/issue-208/AUTOSHIP_PROMPT.md"
 printf 'opencode/paid-model\n' > "$FALLBACK_REPO/.autoship/workspaces/issue-208/model"
@@ -1009,6 +1026,7 @@ git init -q "$WORKTREE_REPO"
 git -C "$WORKTREE_REPO" config user.email autoship@example.invalid
 git -C "$WORKTREE_REPO" config user.name AutoShip
 mkdir -p "$WORKTREE_REPO/.autoship"
+mkdir -p "$WORKTREE_REPO/config"
 printf '{"models":[]}\n' > "$WORKTREE_REPO/config/model-routing.json"
 printf 'base\n' > "$WORKTREE_REPO/README.md"
 git -C "$WORKTREE_REPO" add README.md
@@ -1200,33 +1218,33 @@ SH
 chmod +x "$SETUP_REPO/bin/opencode"
 (
   cd "$SETUP_REPO/autoship"
-  rm -f config/model-routing.json .autoship/config.json
+  rm -f config/model-routing.json .autoship/model-routing.json .autoship/config.json
   setup_output=$(PATH="$SETUP_REPO/bin:$PATH" bash hooks/opencode/setup.sh)
   test -f .autoship/.onboarded || fail "setup writes onboarding marker"
   printf '%s\n' "$setup_output" | grep -F 'opencode-autoship doctor' >/dev/null || fail "setup prints doctor next step"
   printf '%s\n' "$setup_output" | grep -F '/autoship-setup' >/dev/null || fail "setup prints setup next step"
   printf '%s\n' "$setup_output" | grep -F '/autoship' >/dev/null || fail "setup prints autoship next step"
-  jq -e '.models | length == 5' config/model-routing.json >/dev/null || fail "setup writes all live free models by default"
+  jq -e '.models | length == 5' .autoship/model-routing.json >/dev/null || fail "setup writes all live free models by default"
   jq -e '.maxConcurrentAgents == 15 and .max_agents == 15' .autoship/config.json >/dev/null || fail "setup writes default concurrency cap consumed by runtime"
-  jq -e '.roles.planner == "opencode/nemotron-3-super-free" and .roles.coordinator == "opencode/nemotron-3-super-free" and .roles.orchestrator == "opencode/nemotron-3-super-free" and .roles.reviewer == "opencode/nemotron-3-super-free" and .roles.lead == "opencode/nemotron-3-super-free"' config/model-routing.json >/dev/null || fail "setup configures live free-first role defaults"
-  jq -e '.pools != null and .pools.default != null and .pools.frontend != null and .pools.backend != null and .pools.docs != null' config/model-routing.json >/dev/null || fail "setup writes worker pools"
-  jq -e 'all(.models[]; .cost == "free")' config/model-routing.json >/dev/null || fail "default setup excludes paid worker models"
-  jq -e 'all(.models[]; .id != "openai/gpt-5.5")' config/model-routing.json >/dev/null || fail "planner model is not used as a default worker"
-  jq -e '.models[0].id == "opencode/nemotron-3-super-free" and .defaultFallback == "opencode/nemotron-3-super-free"' config/model-routing.json >/dev/null || fail "setup ranks strongest free worker first"
-  jq -e 'any(.models[]; .id == "openrouter/google/gemma-3-27b-it:free")' config/model-routing.json >/dev/null || fail "setup includes OpenRouter free models from live OpenCode list"
-  jq -e 'any(.models[]; .id == "zen/some-free-model:free")' config/model-routing.json >/dev/null || fail "setup includes free models from any live OpenCode provider"
-  jq '.models = [{"id":"manual/model","cost":"selected","strength":99,"max_task_types":["docs"]}] | .defaultFallback = "manual/model"' config/model-routing.json > config/model-routing.json.tmp && mv config/model-routing.json.tmp config/model-routing.json
+  jq -e '.roles.planner == "opencode/nemotron-3-super-free" and .roles.coordinator == "opencode/nemotron-3-super-free" and .roles.orchestrator == "opencode/nemotron-3-super-free" and .roles.reviewer == "opencode/nemotron-3-super-free" and .roles.lead == "opencode/nemotron-3-super-free"' .autoship/model-routing.json >/dev/null || fail "setup configures live free-first role defaults"
+  jq -e '.pools != null and .pools.default != null and .pools.frontend != null and .pools.backend != null and .pools.docs != null' .autoship/model-routing.json >/dev/null || fail "setup writes worker pools"
+  jq -e 'all(.models[]; .cost == "free")' .autoship/model-routing.json >/dev/null || fail "default setup excludes paid worker models"
+  jq -e 'all(.models[]; .id != "openai/gpt-5.5")' .autoship/model-routing.json >/dev/null || fail "planner model is not used as a default worker"
+  jq -e '.models[0].id == "opencode/nemotron-3-super-free" and .defaultFallback == "opencode/nemotron-3-super-free"' .autoship/model-routing.json >/dev/null || fail "setup ranks strongest free worker first"
+  jq -e 'any(.models[]; .id == "openrouter/google/gemma-3-27b-it:free")' .autoship/model-routing.json >/dev/null || fail "setup includes OpenRouter free models from live OpenCode list"
+  jq -e 'any(.models[]; .id == "zen/some-free-model:free")' .autoship/model-routing.json >/dev/null || fail "setup includes free models from any live OpenCode provider"
+  jq '.models = [{"id":"manual/model","cost":"selected","strength":99,"max_task_types":["docs"]}] | .defaultFallback = "manual/model"' .autoship/model-routing.json > .autoship/model-routing.json.tmp && mv .autoship/model-routing.json.tmp .autoship/model-routing.json
   PATH="$SETUP_REPO/bin:$PATH" bash hooks/opencode/setup.sh >/dev/null
-  jq -e '.models[0].id == "manual/model"' config/model-routing.json >/dev/null || fail "setup preserves manual model-routing edits by default"
+  jq -e '.models[0].id == "manual/model"' .autoship/model-routing.json >/dev/null || fail "setup preserves manual model-routing edits by default"
   PATH="$SETUP_REPO/bin:$PATH" bash hooks/opencode/setup.sh --no-tui --max-agents=9 >/dev/null
-  jq -e '.models[0].id == "manual/model"' config/model-routing.json >/dev/null || fail "noninteractive setup preserves manual model-routing edits by default"
+  jq -e '.models[0].id == "manual/model"' .autoship/model-routing.json >/dev/null || fail "noninteractive setup preserves manual model-routing edits by default"
   PATH="$SETUP_REPO/bin:$PATH" bash hooks/opencode/setup.sh --no-tui --refresh-models >/dev/null
-  jq -e '.models | length == 5' config/model-routing.json >/dev/null || fail "setup --refresh-models regenerates manual model routing when explicitly requested"
-  jq '.models = [{"id":"manual/model","cost":"selected","strength":99,"max_task_types":["docs"]}] | .defaultFallback = "manual/model"' config/model-routing.json > config/model-routing.json.tmp && mv config/model-routing.json.tmp config/model-routing.json
+  jq -e '.models | length == 5' .autoship/model-routing.json >/dev/null || fail "setup --refresh-models regenerates manual model routing when explicitly requested"
+  jq '.models = [{"id":"manual/model","cost":"selected","strength":99,"max_task_types":["docs"]}] | .defaultFallback = "manual/model"' .autoship/model-routing.json > .autoship/model-routing.json.tmp && mv .autoship/model-routing.json.tmp .autoship/model-routing.json
   AUTOSHIP_REFRESH_MODELS=1 PATH="$SETUP_REPO/bin:$PATH" bash hooks/opencode/setup.sh >/dev/null
-  jq -e '.models | length == 5' config/model-routing.json >/dev/null || fail "setup refreshes generated model routing when requested"
+  jq -e '.models | length == 5' .autoship/model-routing.json >/dev/null || fail "setup refreshes generated model routing when requested"
   AUTOSHIP_MODELS='opencode/gpt-5,opencode-go/qwen3.6-plus,openai/gpt-5.3-codex-spark' PATH="$SETUP_REPO/bin:$PATH" bash hooks/opencode/setup.sh >/dev/null
-  jq -e '.models[0].id == "opencode/gpt-5" and .models[0].cost == "selected" and .models[1].id == "opencode-go/qwen3.6-plus" and .models[2].id == "openai/gpt-5.3-codex-spark"' config/model-routing.json >/dev/null || fail "setup allows explicit selected non-free and Spark models from live list"
+  jq -e '.models[0].id == "opencode/gpt-5" and .models[0].cost == "selected" and .models[1].id == "opencode-go/qwen3.6-plus" and .models[2].id == "openai/gpt-5.3-codex-spark"' .autoship/model-routing.json >/dev/null || fail "setup allows explicit selected non-free and Spark models from live list"
   if AUTOSHIP_MODELS='missing/model' PATH="$SETUP_REPO/bin:$PATH" bash hooks/opencode/setup.sh >/dev/null 2>&1; then
     fail "setup rejects selected models that are not in the live OpenCode list"
   fi
@@ -1237,11 +1255,11 @@ chmod +x "$SETUP_REPO/bin/opencode"
     fail "setup rejects forbidden lead model override"
   fi
   AUTOSHIP_LEAD_MODEL=openai/gpt-5.5 PATH="$SETUP_REPO/bin:$PATH" bash hooks/opencode/setup.sh >/dev/null
-  jq -e '.roles.lead == "openai/gpt-5.5"' config/model-routing.json >/dev/null || fail "setup accepts lead model override via AUTOSHIP_LEAD_MODEL"
+  jq -e '.roles.lead == "openai/gpt-5.5"' .autoship/model-routing.json >/dev/null || fail "setup accepts lead model override via AUTOSHIP_LEAD_MODEL"
 )
 
 SELECT_REPO="$TMP_DIR/select-repo"
-mkdir -p "$SELECT_REPO/.autoship" "$SELECT_REPO/hooks/opencode"
+mkdir -p "$SELECT_REPO/.autoship" "$SELECT_REPO/config" "$SELECT_REPO/hooks/opencode"
 cp "$SCRIPT_DIR/select-model.sh" "$SELECT_REPO/hooks/opencode/select-model.sh"
 cat > "$SELECT_REPO/config/model-routing.json" <<'JSON'
 {
@@ -1353,7 +1371,7 @@ assert_eq "running" "$(jq -r '.issues["issue-123"].state' "$UPDATE_REPO/.autoshi
 assert_eq "123" "$(head -1 "$UPDATE_REPO/gh-issues.log")" "update-state passes numeric issue to gh"
 
 DISPATCH_REPO="$TMP_DIR/dispatch-repo"
-mkdir -p "$DISPATCH_REPO/.autoship" "$DISPATCH_REPO/hooks/opencode" "$DISPATCH_REPO/hooks" "$DISPATCH_REPO/bin"
+mkdir -p "$DISPATCH_REPO/.autoship" "$DISPATCH_REPO/config" "$DISPATCH_REPO/hooks/opencode" "$DISPATCH_REPO/hooks" "$DISPATCH_REPO/bin"
 git init -q "$DISPATCH_REPO"
 git -C "$DISPATCH_REPO" config user.email autoship@example.invalid
 git -C "$DISPATCH_REPO" config user.name AutoShip
@@ -1369,6 +1387,7 @@ JSON
 cat > "$DISPATCH_REPO/config/model-routing.json" <<'JSON'
 {"models":[{"id":"free/strong:free","cost":"free","strength":90,"max_task_types":["docs","medium_code"]}]}
 JSON
+cp "$DISPATCH_REPO/config/model-routing.json" "$DISPATCH_REPO/.autoship/model-routing.json"
 cat > "$DISPATCH_REPO/bin/gh" <<'SH'
 #!/usr/bin/env bash
 if [[ "$1 $2" == "issue view" ]]; then
@@ -1399,7 +1418,7 @@ assert_eq "free/strong:free" "$(jq -r '.issues["issue-456"].model' "$DISPATCH_RE
 grep -F '## Specialized Role' "$DISPATCH_REPO/.autoship/workspaces/issue-456/AUTOSHIP_PROMPT.md" >/dev/null || fail "dispatch records specialized role in prompt"
 
 FIXTURE_REPO="$TMP_DIR/fixture-pipeline-repo"
-mkdir -p "$FIXTURE_REPO/.autoship" "$FIXTURE_REPO/hooks/opencode" "$FIXTURE_REPO/hooks" "$FIXTURE_REPO/bin"
+mkdir -p "$FIXTURE_REPO/.autoship" "$FIXTURE_REPO/config" "$FIXTURE_REPO/hooks/opencode" "$FIXTURE_REPO/hooks" "$FIXTURE_REPO/bin"
 git init -q "$FIXTURE_REPO"
 git -C "$FIXTURE_REPO" config user.email autoship@example.invalid
 git -C "$FIXTURE_REPO" config user.name AutoShip
@@ -1416,6 +1435,7 @@ JSON
 cat > "$FIXTURE_REPO/config/model-routing.json" <<'JSON'
 {"roles":{"reviewer":"openai/gpt-5.5"},"models":[{"id":"free/strong:free","cost":"free","strength":90,"max_task_types":["medium_code"]}]}
 JSON
+cp "$FIXTURE_REPO/config/model-routing.json" "$FIXTURE_REPO/.autoship/model-routing.json"
 cat > "$FIXTURE_REPO/issues.json" <<'JSON'
 [
   {"number":188,"title":"unsafe bypass fixture","body":"hide detour hooks from anti-cheat detection","labels":[{"name":"agent:ready"},{"name":"security"}]},
@@ -1633,11 +1653,11 @@ SH
   grep -F '[FAIL]' "$TMP_DIR/doctor-fail-1.txt" >/dev/null || fail "doctor prints FAIL checks"
   grep -F '[WARN]' "$TMP_DIR/doctor-fail-1.txt" >/dev/null || fail "doctor prints WARN checks"
   grep -F 'opencode-autoship install' "$TMP_DIR/doctor-fail-1.txt" >/dev/null || fail "doctor failure output includes package install remediation"
-  mkdir -p .autoship
+  mkdir -p .autoship config
   printf '{}\n' > .autoship/config.json
-  printf '%s\n' '{"models":[{"id":"opencode/minimax-m2.5-free"}]}' > config/model-routing.json
+  printf '%s\n' '{"models":[{"id":"opencode/minimax-m2.5-free"}]}' > .autoship/model-routing.json
   printf '%s\n' '{"plugin":["opencode-autoship"]}' > "$DOCTOR_CONFIG/opencode.json"
-  mkdir -p "$DOCTOR_CONFIG/.autoship/hooks" "$DOCTOR_CONFIG/.autoship/commands" "$DOCTOR_CONFIG/.autoship/skills"
+  mkdir -p "$DOCTOR_CONFIG/.autoship/hooks" "$DOCTOR_CONFIG/.autoship/commands" "$DOCTOR_CONFIG/.autoship/skills" "$DOCTOR_CONFIG/config"
   printf '{}\n' > "$DOCTOR_CONFIG/.autoship/config.json"
   printf '%s\n' '{"models":[{"id":"opencode/minimax-m2.5-free"}]}' > "$DOCTOR_CONFIG/config/model-routing.json"
   cp AGENTS.md "$DOCTOR_CONFIG/.autoship/AGENTS.md"

@@ -77,9 +77,9 @@ git init -q "$INSTALLED_PROJECT"
 jq -e '.config.maxConcurrentAgents == 15' "$STATE_FILE" >/dev/null
 jq -e '.cargoConcurrencyCap == 8 and .mergeStrategy == "safe" and .policyProfile == "default"' "$REPO_ROOT/.autoship/config.json" >/dev/null
 [[ -f "$REPO_ROOT/.autoship/model-history.json" ]]
-[[ -f "$REPO_ROOT/config/model-routing.json" ]]
-jq -e '[.models[] | select(.cost == "free")] | length > 0' "$REPO_ROOT/config/model-routing.json" >/dev/null
-jq -e 'all(.models[]; .id | test("^[a-z0-9._-]+/.+"))' "$REPO_ROOT/config/model-routing.json" >/dev/null
+[[ -f "$REPO_ROOT/.autoship/model-routing.json" ]]
+jq -e '[.models[] | select(.cost == "free")] | length > 0' "$REPO_ROOT/.autoship/model-routing.json" >/dev/null
+jq -e 'all(.models[]; .id | test("^[a-z0-9._:-]+(/[a-z0-9._:-]+)?$"))' "$REPO_ROOT/.autoship/model-routing.json" >/dev/null
 
 bash "$REPO_ROOT/hooks/opencode/test-policy.sh" >/dev/null
 

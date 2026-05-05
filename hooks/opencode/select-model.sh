@@ -23,7 +23,10 @@ ISSUE_NUM="${2:-0}"
 if [[ ! "$ISSUE_NUM" =~ ^[0-9]+$ ]]; then
   ISSUE_NUM=0
 fi
-ROUTING_FILE="config/model-routing.json"
+ROUTING_FILE=".autoship/model-routing.json"
+if [[ ! -f "$ROUTING_FILE" && -f "config/model-routing.json" ]]; then
+  ROUTING_FILE="config/model-routing.json"
+fi
 HISTORY_FILE=".autoship/model-history.json"
 CIRCUIT_FILE=".autoship/circuit-breaker.json"
 

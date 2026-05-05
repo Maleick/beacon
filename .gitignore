@@ -25,6 +25,8 @@ graphify-out/
 .autoresearch/
 AUTORESEARCH_FINDINGS.md
 autoresearch-memory.md
+__pycache__/
+*.py[cod]
 
 # Dependencies
 node_modules/
