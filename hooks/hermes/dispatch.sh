@@ -172,11 +172,7 @@ $BODY
 - If stuck at minute 8, stop and report STUCK with exact status.
 
 ## PR Title
-PR_TITLE=$(bash "$SCRIPT_DIR/../opencode/pr-title.sh" --issue "$ISSUE_NUM" --title "$TITLE" --labels "$LABELS") || {
-  echo "Warning: pr-title.sh failed, using fallback title" >&2
-  PR_TITLE="AutoShip: $TITLE (#$ISSUE_NUM)"
-}
-$PR_TITLE
+PR_TITLE="AutoShip: $TITLE (#$ISSUE_NUM)"
 
 ## Notes
 - Hermes toolsets: terminal, file, web, delegation

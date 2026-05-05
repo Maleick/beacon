@@ -161,7 +161,8 @@ prune_by_total_size() {
 
 # Prune by workspace count
 prune_by_workspace_count() {
-  local count=$(ls -1 "$AUTOSHIP_DIR"/workspaces/issue-* 2>/dev/null | wc -l | tr -d ' ')
+  # Count actual directories, not files inside them
+  local count=$(find "$AUTOSHIP_DIR"/workspaces -maxdepth 1 -type d -name "issue-*" 2>/dev/null | wc -l | tr -d ' ')
   
   if [[ "$count" -le "$MAX_WORKSPACE_COUNT" ]]; then
     return 0
@@ -172,13 +173,15 @@ prune_by_workspace_count() {
   local to_remove=$((count - MAX_WORKSPACE_COUNT))
   local removed=0
   
-  for ws in $(ls -1td "$AUTOSHIP_DIR"/workspaces/issue-* 2>/dev/null | tail -r | head -$to_remove); do
+  # Sort by mtime oldest first, only directories
+  for ws in $(find "$AUTOSHIP_DIR"/workspaces -maxdepth 1 -type d -name "issue-*" -print0 2>/dev/null | xargs -0 stat -f "%m %N" 2>/dev/null | sort -n | head -$to_remove | awk '{print $2}'); do
     [[ -d "$ws" ]] || continue
     
     local issue_num=$(basename "$ws" | sed 's/issue-//')
     local status=$(cat "$ws/status" 2>/dev/null || echo "UNKNOWN")
     
-    if [[ "$status" == "RUNNING" ]]; then
+    if [[ "$status" == "RUNNING" || "$status" == "QUEUED" ]]; then
+      log "Skipping active workspace: issue-$issue_num (${status})"
       continue
     fi
     
