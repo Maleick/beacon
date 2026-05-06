@@ -1,3 +1,10 @@
+## [2.4.9](https://github.com/Maleick/AutoShip/compare/v2.4.8...v2.4.9) (2026-05-06)
+
+
+### Bug Fixes
+
+* detect Windows cargo target and use linux-gnu fallback on WSL ([ea4147e](https://github.com/Maleick/AutoShip/commit/ea4147e3a1bbc31bca49732e624cc05e6ec6494b))
+
 ## [2.4.8](https://github.com/Maleick/AutoShip/compare/v2.4.7...v2.4.8) (2026-05-06)
 
 
