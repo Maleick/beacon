@@ -1,3 +1,11 @@
+## [2.4.14](https://github.com/Maleick/AutoShip/compare/v2.4.13...v2.4.14) (2026-05-06)
+
+
+### Bug Fixes
+
+* **install:** expose AutoShip commands ([#365](https://github.com/Maleick/AutoShip/issues/365)) ([d2f44dd](https://github.com/Maleick/AutoShip/commit/d2f44ddbb59ff8d68fdac7f095b788cd948dd25c))
+* **security:** prevent worker self-reports from poisoning model routing policy ([#359](https://github.com/Maleick/AutoShip/issues/359)) ([7220cfb](https://github.com/Maleick/AutoShip/commit/7220cfbe4c47fddad6b1523ac19b9292524d367a))
+
 ## [2.4.13](https://github.com/Maleick/AutoShip/compare/v2.4.12...v2.4.13) (2026-05-06)
 
 
