@@ -1,3 +1,10 @@
+## [2.4.18](https://github.com/Maleick/AutoShip/compare/v2.4.17...v2.4.18) (2026-05-06)
+
+
+### Bug Fixes
+
+* **opencode:** route rust unsafe workers ([#368](https://github.com/Maleick/AutoShip/issues/368)) ([a812d01](https://github.com/Maleick/AutoShip/commit/a812d01fc43660c582f78aa46956c5af94e7c325))
+
 ## [2.4.17](https://github.com/Maleick/AutoShip/compare/v2.4.16...v2.4.17) (2026-05-06)
 
 
