@@ -1,3 +1,10 @@
+## [2.4.10](https://github.com/Maleick/AutoShip/compare/v2.4.9...v2.4.10) (2026-05-06)
+
+
+### Bug Fixes
+
+* **install:** remove unused repo root ([#357](https://github.com/Maleick/AutoShip/issues/357)) ([f7d5ee2](https://github.com/Maleick/AutoShip/commit/f7d5ee220ac44bac9c5901ea34d57f4a364f0814))
+
 ## [2.4.9](https://github.com/Maleick/AutoShip/compare/v2.4.8...v2.4.9) (2026-05-06)
 
 
