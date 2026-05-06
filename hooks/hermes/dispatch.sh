@@ -202,7 +202,7 @@ prompt = f"""# Hermes Agent Prompt — AutoShip Issue #{issue_num}
 - Commit with conventional format: "feat|fix|docs|refactor(scope): description (#{issue_num})".
 - **PUSH branch to origin**: `git push origin autoship/issue-{issue_num}`
 - **CREATE PR via gh CLI**: `gh pr create --title "..." --body "Closes #{issue_num}" --base {base_branch} --head autoship/issue-{issue_num}`
-- **CLOSE issue**: `gh issue close {issue_num} --reason completed`
+- **DO NOT manually close the GitHub issue**. The `Closes #{issue_num}` PR body will close it only after the PR is merged. Manually closing issues while PRs are still open blocks follow-up automation.
 - Write HERMES_RESULT.md in worktree root with: status (COMPLETE/BLOCKED/STUCK), files changed, validation results.
 - Update {workspace_path}/status to COMPLETE, BLOCKED, or STUCK.
 - If stuck at minute 8, stop and report STUCK with exact status.

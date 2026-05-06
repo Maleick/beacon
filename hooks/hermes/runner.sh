@@ -34,9 +34,9 @@ cd "$REPO_ROOT"
 AUTOSHIP_DIR="$REPO_ROOT/.autoship"
 WORKSPACES_DIR="$AUTOSHIP_DIR/workspaces"
 
-# Read Hermes max concurrent from config.yaml
-MAX=20
-if [[ -f "$HOME/.hermes/config.yaml" ]]; then
+# Read Hermes max concurrent from config.yaml; allow AutoShip runs to cap lower.
+MAX="${HERMES_MAX_WORKERS:-20}"
+if [[ -z "${HERMES_MAX_WORKERS:-}" && -f "$HOME/.hermes/config.yaml" ]]; then
   config_max=$(grep 'max_concurrent_children' "$HOME/.hermes/config.yaml" | awk '{print $2}' | tr -d '"')
   if [[ "$config_max" =~ ^[0-9]+$ ]]; then
     MAX="$config_max"
@@ -111,7 +111,14 @@ if [[ -n "${1:-}" ]]; then
       exit 0
     fi
     HERMES_WORKER_TIMEOUT_SECONDS="${HERMES_WORKER_TIMEOUT_SECONDS:-1800}"
-    "$TIMEOUT_CMD" "$HERMES_WORKER_TIMEOUT_SECONDS" hermes chat -q "$(cat "$workspace_dir/HERMES_PROMPT.md")" --worktree --quiet || {
+    HERMES_MODEL_ARGS=()
+    if [[ -n "${HERMES_MODEL:-}" ]]; then
+      HERMES_MODEL_ARGS+=(--model "$HERMES_MODEL")
+    fi
+    if [[ -n "${HERMES_PROVIDER:-}" ]]; then
+      HERMES_MODEL_ARGS+=(--provider "$HERMES_PROVIDER")
+    fi
+    "$TIMEOUT_CMD" "$HERMES_WORKER_TIMEOUT_SECONDS" hermes chat "${HERMES_MODEL_ARGS[@]}" -q "$(cat "$workspace_dir/HERMES_PROMPT.md")" --worktree --quiet || {
       exit_code=$?
       if [[ $exit_code -eq 124 ]]; then
         echo "TIMEOUT: $ISSUE_KEY exceeded ${HERMES_WORKER_TIMEOUT_SECONDS}s"
