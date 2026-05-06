@@ -1,3 +1,10 @@
+## [2.4.15](https://github.com/Maleick/AutoShip/compare/v2.4.14...v2.4.15) (2026-05-06)
+
+
+### Bug Fixes
+
+* **deps:** remove vulnerable bundled npm from lockfile ([#366](https://github.com/Maleick/AutoShip/issues/366)) ([330a7f6](https://github.com/Maleick/AutoShip/commit/330a7f62fcf03cb62ffeb3126b3bfb0b07ea0503))
+
 ## [2.4.14](https://github.com/Maleick/AutoShip/compare/v2.4.13...v2.4.14) (2026-05-06)
 
 ### Bug Fixes
