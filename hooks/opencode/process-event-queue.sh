@@ -160,7 +160,11 @@ discover_test_command() {
   elif [[ -f Makefile ]]; then
     printf 'make test\n'
   elif [[ -f Cargo.toml ]]; then
-    printf 'cargo test\n'
+    if [[ -f .cargo/config.toml ]] && grep -q 'target.*x86_64-pc-windows-msvc' .cargo/config.toml 2>/dev/null; then
+      printf 'cargo test --target x86_64-unknown-linux-gnu\n'
+    else
+      printf 'cargo test\n'
+    fi
   elif [[ -f pyproject.toml ]]; then
     printf 'pytest\n'
   elif [[ -f go.mod ]]; then

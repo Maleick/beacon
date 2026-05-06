@@ -213,7 +213,7 @@ If you cannot complete, write HERMES_RESULT.md with status BLOCKED and reason.
 - Work only in this worktree: {worktree_path}
 - Branch: autoship/issue-{issue_num}
 - Implement per acceptance criteria.
-- Run project checks: cargo fmt --check, cargo clippy, cargo test (macOS-safe only).
+- Run project checks: cargo fmt --check, cargo clippy --target x86_64-unknown-linux-gnu, cargo test --target x86_64-unknown-linux-gnu (or focused tests if full suite is too slow).
 - Commit with conventional format: "feat|fix|docs|refactor(scope): description (#{issue_num})".
 - **PUSH branch to origin**: `git push origin autoship/issue-{issue_num}`
 - **CREATE PR via gh CLI**: `gh pr create --title "..." --body "Closes #{issue_num}" --base {base_branch} --head autoship/issue-{issue_num}`
