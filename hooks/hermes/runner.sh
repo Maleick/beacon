@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Hermes agent runner — execute Hermes worker via delegate_task with timeout
-set -euo pipefail
+set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
@@ -224,7 +224,10 @@ echo "Hermes runner: $running_count running, $available_slots slots available (m
 
 # Start up to available_slots queued workspaces
 started=0
-for status_file in $queued; do
+while IFS= read -r status_file; do
+  if [[ -z "$status_file" ]]; then
+    continue
+  fi
   if [[ "$started" -ge "$available_slots" ]]; then
     break
   fi
@@ -263,7 +266,8 @@ for status_file in $queued; do
   fi
 
   started=$((started + 1))
-done
+  echo "Dispatched $issue_key (prompt=$prompt_file)"
+done <<< "$queued"
 
 echo "Started $started Hermes workers"
 
