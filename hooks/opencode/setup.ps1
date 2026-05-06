@@ -49,6 +49,28 @@ $AutoshipDir = ".autoship"
 $RoutingFile = Join-Path $AutoshipDir "model-routing.json"
 $ConfigFile = Join-Path $AutoshipDir "config.json"
 
+function Initialize-AutoshipDirectory {
+    param([string]$Path)
+
+    if (Test-Path -LiteralPath $Path) {
+        $item = Get-Item -LiteralPath $Path -Force
+
+        if (-not $item.PSIsContainer) {
+            throw "Path '$Path' exists but is not a directory."
+        }
+
+        if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+            throw "Refusing to use '$Path' because it is a symlink or reparse point."
+        }
+
+        return
+    }
+
+    New-Item -ItemType Directory -Path $Path -Force | Out-Null
+}
+
+Initialize-AutoshipDirectory -Path $AutoshipDir
+
 function Test-Command {
     param([string]$Name)
     return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
