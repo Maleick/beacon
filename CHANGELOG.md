@@ -1,3 +1,10 @@
+## [2.4.16](https://github.com/Maleick/AutoShip/compare/v2.4.15...v2.4.16) (2026-05-06)
+
+
+### Bug Fixes
+
+* **runner:** mark missing terminal status as STUCK ([#358](https://github.com/Maleick/AutoShip/issues/358)) ([0d01d1c](https://github.com/Maleick/AutoShip/commit/0d01d1c0f1e2b2ff345c63903be438c0f6290005))
+
 ## [2.4.15](https://github.com/Maleick/AutoShip/compare/v2.4.14...v2.4.15) (2026-05-06)
 
 
