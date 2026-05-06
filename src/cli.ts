@@ -122,6 +122,8 @@ async function install() {
     { src: join(PACKAGE_ROOT, "commands"), dest: join(autoshipDir, "commands") },
     { src: join(PACKAGE_ROOT, "skills"), dest: join(autoshipDir, "skills") },
     { src: join(PACKAGE_ROOT, "plugins"), dest: join(autoshipDir, "plugins") },
+    { src: join(PACKAGE_ROOT, "commands"), dest: join(configDir, "commands") },
+    { src: join(PACKAGE_ROOT, "skills"), dest: join(configDir, "skills") },
     { src: join(PACKAGE_ROOT, "AGENTS.md"), dest: join(autoshipDir, "AGENTS.md") },
     { content: `${VERSION}\n`, dest: join(autoshipDir, "VERSION") },
   ];

@@ -79,8 +79,13 @@ else
 
   if [[ ! -f "$CHANGELOG_FILE" ]]; then
     record_mismatch "CHANGELOG.md is missing"
-  elif ! grep -Eq "^## ${expected_version//./\\.}$" "$CHANGELOG_FILE"; then
-    record_mismatch "CHANGELOG release heading for $expected_version is missing"
+  else
+    changelog_version="${expected_version#v}"
+    changelog_version_pattern="${changelog_version//./\\.}"
+    expected_version_pattern="${expected_version//./\\.}"
+    if ! grep -Eq "^## (\\[$changelog_version_pattern\\]|$expected_version_pattern)($|[[:space:](])" "$CHANGELOG_FILE"; then
+      record_mismatch "CHANGELOG release heading for $expected_version is missing"
+    fi
   fi
 
   if [[ -n "$INSTALLED_VERSION_FILE" ]]; then
