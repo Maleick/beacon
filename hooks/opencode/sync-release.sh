@@ -16,6 +16,8 @@ PLUGIN_DIR="$CONFIG_DIR/plugins"
 PLUGIN_DEST="$PLUGIN_DIR/autoship.ts"
 VERSION_FILE="$PLUGIN_DIR/autoship.version"
 AUTOSHIP_HOME="$CONFIG_DIR/.autoship"
+COMMANDS_DIR="$CONFIG_DIR/commands"
+SKILLS_DIR="$CONFIG_DIR/skills"
 
 assert_not_symlink() {
   local path="$1"
@@ -73,18 +75,30 @@ remove_managed_path() {
 assert_not_symlink "$CONFIG_DIR"
 assert_not_symlink "$PLUGIN_DIR"
 assert_not_symlink "$AUTOSHIP_HOME"
+assert_not_symlink "$COMMANDS_DIR"
+assert_not_symlink "$SKILLS_DIR"
 assert_not_symlink "$PLUGIN_DEST"
 assert_not_symlink "$VERSION_FILE"
 assert_under_config "$PLUGIN_DIR"
 assert_under_config "$AUTOSHIP_HOME"
-mkdir -p "$PLUGIN_DIR" "$AUTOSHIP_HOME"
+assert_under_config "$COMMANDS_DIR"
+assert_under_config "$SKILLS_DIR"
+mkdir -p "$PLUGIN_DIR" "$AUTOSHIP_HOME" "$COMMANDS_DIR" "$SKILLS_DIR"
 
 if [[ "$(cd "$REPO_ROOT" && pwd -P)" == "$(cd "$AUTOSHIP_HOME" && pwd -P)" ]]; then
   assert_not_symlink "$AUTOSHIP_HOME/plugins"
   assert_not_symlink "$AUTOSHIP_HOME/plugins/autoship.ts"
+  assert_not_symlink "$AUTOSHIP_HOME/commands"
+  assert_not_symlink "$AUTOSHIP_HOME/skills"
   assert_not_symlink "$AUTOSHIP_HOME/VERSION"
   if [[ -f "$AUTOSHIP_HOME/plugins/autoship.ts" ]]; then
     cp -f "$AUTOSHIP_HOME/plugins/autoship.ts" "$PLUGIN_DEST"
+  fi
+  if [[ -d "$AUTOSHIP_HOME/commands" ]]; then
+    cp -R "$AUTOSHIP_HOME/commands/." "$COMMANDS_DIR/"
+  fi
+  if [[ -d "$AUTOSHIP_HOME/skills" ]]; then
+    cp -R "$AUTOSHIP_HOME/skills/." "$SKILLS_DIR/"
   fi
   if [[ -f "$AUTOSHIP_HOME/VERSION" ]]; then
     tr -d '[:space:]' <"$AUTOSHIP_HOME/VERSION" >"$VERSION_FILE"
@@ -112,6 +126,8 @@ copy_assets() {
   cp -R "$src/skills" "$AUTOSHIP_HOME/skills"
   cp -R "$src/commands" "$AUTOSHIP_HOME/commands"
   cp -R "$src/plugins" "$AUTOSHIP_HOME/plugins"
+  cp -R "$src/commands/." "$COMMANDS_DIR/"
+  cp -R "$src/skills/." "$SKILLS_DIR/"
   assert_not_symlink "$AUTOSHIP_HOME/AGENTS.md"
   assert_not_symlink "$AUTOSHIP_HOME/VERSION"
   if [[ -f "$src/AGENTS.md" ]]; then
