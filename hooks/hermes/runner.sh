@@ -185,6 +185,18 @@ Do NOT run cargo directly in WSL — it will fail due to missing MSVC linker (li
       autoship_state_set set-complete "$ISSUE_KEY"
       # Trigger PR creation. Hermes workers write HERMES_RESULT.md, while the
       # shared OpenCode PR helper defaults to AUTOSHIP_RESULT.md.
+      # If HERMES_RESULT.md is missing but git has changes, generate one from git status.
+      if [[ ! -s "$worktree_path/HERMES_RESULT.md" ]]; then
+        if git -C "$worktree_path" status --short | grep -q '^'; then
+          {
+            printf '---\nstatus: COMPLETE\nfiles_changed:\n'
+            git -C "$worktree_path" status --short | sed 's/^/  - /'
+            printf 'validation_results: Worker completed but did not write detailed results.\n'
+            printf 'pr_url: \n'
+          } > "$worktree_path/HERMES_RESULT.md"
+          echo "Generated fallback HERMES_RESULT.md for $ISSUE_KEY"
+        fi
+      fi
       bash "$SCRIPT_DIR/../opencode/create-pr.sh" "$ISSUE_NUM" "$worktree_path" "$worktree_path/HERMES_RESULT.md"
     elif [[ "$result_status" == "BLOCKED" ]]; then
       autoship_state_set set-blocked "$ISSUE_KEY"
