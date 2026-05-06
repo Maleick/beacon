@@ -1,6 +1,5 @@
 ## [2.4.14](https://github.com/Maleick/AutoShip/compare/v2.4.13...v2.4.14) (2026-05-06)
 
-
 ### Bug Fixes
 
 * **install:** expose AutoShip commands ([#365](https://github.com/Maleick/AutoShip/issues/365)) ([d2f44dd](https://github.com/Maleick/AutoShip/commit/d2f44ddbb59ff8d68fdac7f095b788cd948dd25c))
