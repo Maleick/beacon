@@ -122,6 +122,8 @@ This is now standard procedure for all repos under `~/Projects/`.
 
 **Hermes result-file pitfall**: Hermes prompts write `HERMES_RESULT.md`, while shared OpenCode PR helpers default to `AUTOSHIP_RESULT.md`. `hooks/hermes/runner.sh` must pass `$worktree_path/HERMES_RESULT.md` into `hooks/opencode/create-pr.sh`; otherwise completed Hermes work can create PRs but log `VERDICT: FAIL - AUTOSHIP_RESULT.md missing`.
 
+**Issue closure pitfall**: Worker prompts must NOT tell Hermes to run `gh issue close` after PR creation. Use `Closes #N` in the PR body and let GitHub close the issue after merge. Manually closing issues while their PRs are open hides follow-up work from AutoShip planners and breaks issue/PR lifecycle state.
+
 If you encounter old stubs, update AutoShip: `cd ~/Projects/AutoShip && git pull origin main`
 
 **User Preference**: All AutoShip improvements must be made in `~/Projects/AutoShip` repo and submitted as PRs (or direct to main if explicitly approved). Do not bake AutoShip logic into this Hermes skill — keep skills as thin wrappers.
