@@ -94,8 +94,26 @@ case "$action" in
       })
     ' "$AB_TEST_FILE" >"$tmp" && mv "$tmp" "$AB_TEST_FILE"
 
-    # Auto-adjust model scores based on performance
-    bash "$0" adjust-scores >/dev/null 2>&1 || true
+    if [[ -f "$ROUTING_FILE" ]]; then
+      tmp=$(mktemp)
+      jq -s '
+        .[0] as $routing |
+        .[1] as $ab |
+        $routing | .models = [.models[] | . as $m |
+          if ($ab.performance[$m.id] // {}).total > 0 then
+            ($ab.performance[$m.id].pass // 0) as $passes |
+            ($ab.performance[$m.id].fail // 0) as $fails |
+            ($ab.performance[$m.id].total // 1) as $total |
+            ($passes / $total) as $rate |
+            .ab_score = ($rate * 100 | floor) |
+            .strength = (.strength // 0)
+          else
+            .
+          end
+        ]
+      ' "$ROUTING_FILE" "$AB_TEST_FILE" > "$tmp" && mv "$tmp" "$ROUTING_FILE"
+    fi
+
     ;;
 
   adjust-scores)
@@ -112,7 +130,7 @@ case "$action" in
           ($ab.performance[$m.id].total // 1) as $total |
           ($passes / $total) as $rate |
           .ab_score = ($rate * 100 | floor) |
-          .strength = ((.strength // 0) + (.ab_score // 0))
+          .strength = (.strength // 0)
         else
           .
         end
