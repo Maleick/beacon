@@ -1,3 +1,10 @@
+## [2.4.5](https://github.com/Maleick/AutoShip/compare/v2.4.4...v2.4.5) (2026-05-06)
+
+
+### Bug Fixes
+
+* **hermes:** make worker timeout configurable ([#355](https://github.com/Maleick/AutoShip/issues/355)) ([cdcb250](https://github.com/Maleick/AutoShip/commit/cdcb2506e1c9c4bca10042066af386ee4b92adbb))
+
 ## [2.4.4](https://github.com/Maleick/AutoShip/compare/v2.4.3...v2.4.4) (2026-05-06)
 
 
