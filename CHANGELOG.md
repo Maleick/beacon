@@ -1,3 +1,10 @@
+## [2.4.17](https://github.com/Maleick/AutoShip/compare/v2.4.16...v2.4.17) (2026-05-06)
+
+
+### Bug Fixes
+
+* **install:** register autoship commands ([#367](https://github.com/Maleick/AutoShip/issues/367)) ([b2a7fe2](https://github.com/Maleick/AutoShip/commit/b2a7fe2a1345d9a860ff3f4041c4defca4dafaf9))
+
 ## [2.4.16](https://github.com/Maleick/AutoShip/compare/v2.4.15...v2.4.16) (2026-05-06)
 
 
