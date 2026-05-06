@@ -168,7 +168,7 @@ Do NOT run cargo directly in WSL — it will fail due to missing MSVC linker (li
       fi
     fi
     
-    "$TIMEOUT_CMD" "$HERMES_WORKER_TIMEOUT_SECONDS" hermes chat "${HERMES_MODEL_ARGS[@]}" -q "$(cat "$prompt_file")" --worktree --quiet || {
+    "$TIMEOUT_CMD" "$HERMES_WORKER_TIMEOUT_SECONDS" hermes chat "${HERMES_MODEL_ARGS[@]}" -q "$(cat "$prompt_file")" --quiet || {
       exit_code=$?
       # Restore original prompt if we modified it
       if [[ -f "$workspace_dir/prompt.bak" ]]; then
