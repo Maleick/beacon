@@ -248,6 +248,9 @@ for status_file in $queued; do
     fi
   fi
 
+  # Mark as RUNNING before dispatch
+  printf 'RUNNING\n' >"$status_file"
+
   # Dispatch this single issue, detached from terminal
   # Log to workspace log file for debugging
   log_file="$workspace_dir/runner.log"
