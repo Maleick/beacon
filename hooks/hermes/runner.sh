@@ -120,8 +120,40 @@ if [[ -n "${1:-}" ]]; then
     if [[ -n "${HERMES_PROVIDER:-}" ]]; then
       HERMES_MODEL_ARGS+=(--provider "$HERMES_PROVIDER")
     fi
+    
+    # WINDOWS BRIDGE: For repos that require Windows-native builds (MSVC),
+    # use the windows_bridge.py script instead of hermes chat in WSL.
+    # The bridge writes .ps1 scripts to Windows temp and executes via powershell -File.
+    WINDOWS_BRIDGE="${WINDOWS_BRIDGE_PATH:-$HOME/.hermes/scripts/windows_bridge.py}"
+    if [[ -f "$WINDOWS_BRIDGE" && -f "$worktree_path/.cargo/config.toml" ]]; then
+      # Detect Windows-targeted cargo config
+      if grep -q "x86_64-pc-windows-msvc" "$worktree_path/.cargo/config.toml" 2>/dev/null; then
+        echo "Windows target detected — using bridge: $WINDOWS_BRIDGE"
+        # The bridge runs cargo check on Windows host; we still need hermes chat
+        # for the actual code editing. Solution: run hermes chat with a modified
+        # prompt that tells the agent to use the bridge for validation.
+        # For now: run hermes chat but prepend bridge instructions to prompt.
+        bridge_instructions="
+
+## WINDOWS BUILD INSTRUCTIONS
+This repository requires Windows-native builds. When running cargo check or cargo test,
+use the Windows bridge instead of direct invocation:
+  python3 $WINDOWS_BRIDGE check
+The bridge writes PowerShell scripts to Windows temp and executes via cmd.exe /c powershell.exe -File.
+Do NOT run cargo directly in WSL — it will fail due to missing MSVC linker (lib.exe).
+"
+        # Append bridge instructions to prompt file temporarily
+        cp "$workspace_dir/HERMES_PROMPT.md" "$workspace_dir/HERMES_PROMPT.md.bak"
+        echo "$bridge_instructions" >> "$workspace_dir/HERMES_PROMPT.md"
+      fi
+    fi
+    
     "$TIMEOUT_CMD" "$HERMES_WORKER_TIMEOUT_SECONDS" hermes chat "${HERMES_MODEL_ARGS[@]}" -q "$(cat "$workspace_dir/HERMES_PROMPT.md")" --worktree --quiet || {
       exit_code=$?
+      # Restore original prompt if we modified it
+      if [[ -f "$workspace_dir/HERMES_PROMPT.md.bak" ]]; then
+        mv "$workspace_dir/HERMES_PROMPT.md.bak" "$workspace_dir/HERMES_PROMPT.md"
+      fi
       if [[ $exit_code -eq 124 ]]; then
         echo "TIMEOUT: $ISSUE_KEY exceeded ${HERMES_WORKER_TIMEOUT_SECONDS}s"
         printf 'STUCK\n' >"$status_file"
@@ -133,6 +165,11 @@ if [[ -n "${1:-}" ]]; then
       fi
       exit 0
     }
+    
+    # Restore original prompt if we modified it
+    if [[ -f "$workspace_dir/HERMES_PROMPT.md.bak" ]]; then
+      mv "$workspace_dir/HERMES_PROMPT.md.bak" "$workspace_dir/HERMES_PROMPT.md"
+    fi
 
     # Check result using absolute path
     result_status=$(cat "$workspace_dir/status" 2>/dev/null || echo "unknown")
