@@ -174,26 +174,42 @@ body = os.environ["HERMES_BODY"]
 worktree_path = os.environ["HERMES_WORKTREE_PATH"]
 workspace_path = os.environ["HERMES_WORKSPACE_PATH"]
 base_branch = os.environ["HERMES_BASE_BRANCH_VALUE"]
+cat > "$WORKSPACE_PATH/HERMES_PROMPT.md" <<EOF
+# Hermes Agent Prompt — AutoShip Issue #${ISSUE_NUM}
 
-prompt = f"""# Hermes Agent Prompt — AutoShip Issue #{issue_num}
-
-## Issue: {title}
+## Issue: ${ISSUE_TITLE}
 
 ## Labels
-{labels}
+${LABELS}
 
 ## Task Type
-{task_type}
+${TASK_TYPE}
 
 ## Model
-{model} (inherited from ~/.hermes/config.yaml)
+${MODEL}
 
 ## Role
-{role}
+${ROLE}
 
 ## Body
-{body}
+${BODY}
 
+## CRITICAL: You MUST complete the full workflow
+
+1. Implement the issue — edit code, add tests, update docs as needed
+2. Run validation: \`cargo fmt --check\`, \`cargo clippy --all-targets --all-features\`, \`cargo test --all --all-features\` (or focused tests if full suite is too slow)
+3. Commit ALL changes with a Conventional Commit message: \`git add -A && git commit -m "feat(scope): description (#${ISSUE_NUM})"\`
+4. Push the branch: \`git push origin $(git branch --show-current)\`
+5. Create a PR: \`gh pr create --title "feat: ${ISSUE_TITLE}" --body "Closes #${ISSUE_NUM}"\`
+6. Write \`HERMES_RESULT.md\` in the workspace root with:
+   - status: COMPLETE or BLOCKED
+   - files_changed: list of files modified/created
+   - validation_results: output of test commands
+   - pr_url: the created PR URL
+7. Update status file: \`echo "COMPLETE" > status\`
+
+If you cannot complete, write HERMES_RESULT.md with status BLOCKED and reason.
+EOF
 ## Instructions
 - Work only in this worktree: {worktree_path}
 - Branch: autoship/issue-{issue_num}
