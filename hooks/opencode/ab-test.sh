@@ -94,6 +94,26 @@ case "$action" in
       })
     ' "$AB_TEST_FILE" > "$tmp" && mv "$tmp" "$AB_TEST_FILE"
 
+    if [[ -f "$ROUTING_FILE" ]]; then
+      tmp=$(mktemp)
+      jq -s '
+        .[0] as $routing |
+        .[1] as $ab |
+        $routing | .models = [.models[] | . as $m |
+          if ($ab.performance[$m.id] // {}).total > 0 then
+            ($ab.performance[$m.id].pass // 0) as $passes |
+            ($ab.performance[$m.id].fail // 0) as $fails |
+            ($ab.performance[$m.id].total // 1) as $total |
+            ($passes / $total) as $rate |
+            .ab_score = ($rate * 100 | floor) |
+            .strength = (.strength // 0)
+          else
+            .
+          end
+        ]
+      ' "$ROUTING_FILE" "$AB_TEST_FILE" > "$tmp" && mv "$tmp" "$ROUTING_FILE"
+    fi
+
     ;;
 
   adjust-scores)
