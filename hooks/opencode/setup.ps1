@@ -423,7 +423,7 @@ $config = @{
 $config | ConvertTo-Json -Depth 10 | Set-Content $ConfigFile -Encoding UTF8
 
 # Write .onboarded timestamp
-$timestamp = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
+$timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 $timestamp | Set-Content (Join-Path $AutoshipDir ".onboarded") -Encoding UTF8
 
 Write-Host "`nAutoShip OpenCode setup complete" -ForegroundColor Green
