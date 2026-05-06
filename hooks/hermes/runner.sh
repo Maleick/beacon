@@ -34,9 +34,9 @@ cd "$REPO_ROOT"
 AUTOSHIP_DIR="$REPO_ROOT/.autoship"
 WORKSPACES_DIR="$AUTOSHIP_DIR/workspaces"
 
-# Read Hermes max concurrent from config.yaml
-MAX=20
-if [[ -f "$HOME/.hermes/config.yaml" ]]; then
+# Read Hermes max concurrent from config.yaml; allow AutoShip runs to cap lower.
+MAX="${HERMES_MAX_WORKERS:-20}"
+if [[ -z "${HERMES_MAX_WORKERS:-}" && -f "$HOME/.hermes/config.yaml" ]]; then
   config_max=$(grep 'max_concurrent_children' "$HOME/.hermes/config.yaml" | awk '{print $2}' | tr -d '"')
   if [[ "$config_max" =~ ^[0-9]+$ ]]; then
     MAX="$config_max"
@@ -96,7 +96,7 @@ if [[ -n "${1:-}" ]]; then
   if command -v hermes &>/dev/null; then
     # Hermes CLI available — spawn hermes chat.
     cd "$worktree_path"
-    # Timeout: 30 minutes (1800 seconds) for atomic work
+    # Timeout: configurable; default 30 minutes for AutoShip workers
     # Use gtimeout on macOS, timeout on Linux
     TIMEOUT_CMD=""
     if command -v gtimeout &>/dev/null; then
@@ -112,12 +112,20 @@ if [[ -n "${1:-}" ]]; then
     fi
     export GH_TOKEN="${GH_TOKEN:-}"
     export HERMES_TARGET_REPO_PATH="${HERMES_TARGET_REPO_PATH:-$REPO_ROOT}"
-    "$TIMEOUT_CMD" 1800 hermes chat -q "$(cat "$workspace_dir/HERMES_PROMPT.md")" --worktree --quiet || {
+    HERMES_WORKER_TIMEOUT_SECONDS="${HERMES_WORKER_TIMEOUT_SECONDS:-1800}"
+    HERMES_MODEL_ARGS=()
+    if [[ -n "${HERMES_MODEL:-}" ]]; then
+      HERMES_MODEL_ARGS+=(--model "$HERMES_MODEL")
+    fi
+    if [[ -n "${HERMES_PROVIDER:-}" ]]; then
+      HERMES_MODEL_ARGS+=(--provider "$HERMES_PROVIDER")
+    fi
+    "$TIMEOUT_CMD" "$HERMES_WORKER_TIMEOUT_SECONDS" hermes chat "${HERMES_MODEL_ARGS[@]}" -q "$(cat "$workspace_dir/HERMES_PROMPT.md")" --worktree --quiet || {
       exit_code=$?
       if [[ $exit_code -eq 124 ]]; then
-        echo "TIMEOUT: $ISSUE_KEY exceeded 30 minutes"
+        echo "TIMEOUT: $ISSUE_KEY exceeded ${HERMES_WORKER_TIMEOUT_SECONDS}s"
         printf 'STUCK\n' >"$status_file"
-        autoship_state_set set-stuck "$ISSUE_KEY" reason="timeout_30min"
+        autoship_state_set set-stuck "$ISSUE_KEY" reason="timeout_${HERMES_WORKER_TIMEOUT_SECONDS}s"
       else
         echo "ERROR: $ISSUE_KEY exited with code $exit_code"
         printf 'BLOCKED\n' >"$status_file"
@@ -138,8 +146,9 @@ if [[ -n "${1:-}" ]]; then
 
     if [[ "$result_status" == "COMPLETE" ]]; then
       autoship_state_set set-complete "$ISSUE_KEY"
-      # Trigger PR creation
-      bash "$SCRIPT_DIR/../opencode/create-pr.sh" "$ISSUE_NUM" "$worktree_path"
+      # Trigger PR creation. Hermes workers write HERMES_RESULT.md, while the
+      # shared OpenCode PR helper defaults to AUTOSHIP_RESULT.md.
+      bash "$SCRIPT_DIR/../opencode/create-pr.sh" "$ISSUE_NUM" "$worktree_path" "$worktree_path/HERMES_RESULT.md"
     elif [[ "$result_status" == "BLOCKED" ]]; then
       autoship_state_set set-blocked "$ISSUE_KEY"
     elif [[ "$result_status" == "STUCK" ]]; then
