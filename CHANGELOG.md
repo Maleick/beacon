@@ -1,3 +1,10 @@
+# [2.6.0](https://github.com/Maleick/AutoShip/compare/v2.5.0...v2.6.0) (2026-05-06)
+
+
+### Features
+
+* add PowerShell setup script for Windows compatibility ([#370](https://github.com/Maleick/AutoShip/issues/370)) ([b410def](https://github.com/Maleick/AutoShip/commit/b410def9140785b0908d4821d410c02fcc07ff32))
+
 # [2.5.0](https://github.com/Maleick/AutoShip/compare/v2.4.19...v2.5.0) (2026-05-06)
 
 
