@@ -2,7 +2,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 for dep in jq gh; do
   if ! command -v "$dep" >/dev/null 2>&1; then
     echo "Error: $dep is required" >&2
