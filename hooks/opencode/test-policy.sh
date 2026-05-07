@@ -350,6 +350,7 @@ assert_eq "1" "$artifact_count" "runner captures a salvaged truncation failure a
 artifact_file=$(find "$RUNNER_REPO/.autoship/failures" -name '*-issue-996.json' | head -1)
 jq -e '.issue == "issue-996" and .model == "opencode/test-free" and .role == "implementer" and .workspace != "" and .hook == "hooks/opencode/runner.sh" and .failure_category == "salvaged_truncation" and (.logs | contains("ok")) and .attempt == 2' "$artifact_file" >/dev/null || fail "failure artifact includes issue, model, workspace, hook, logs, category, role, and attempt"
 test -s "$RUNNER_REPO/.autoship/workspaces/issue-996/worker.pid" || fail "runner records worker pid for lifecycle monitoring"
+test -s "$RUNNER_REPO/.autoship/workspaces/issue-996/worker.command" || fail "runner records worker command for lifecycle monitoring"
 
 RETRY_REPO="$TMP_DIR/retry-limit-repo"
 mkdir -p "$RETRY_REPO/.autoship/workspaces/issue-181" "$RETRY_REPO/.autoship/failures" "$RETRY_REPO/hooks/opencode" "$RETRY_REPO/hooks"
@@ -804,6 +805,46 @@ touch -t 202604240000 "$MONITOR_COMPLETE_REPO/.autoship/workspaces/issue-998/sta
   bash hooks/opencode/monitor-agents.sh >/dev/null
 )
 assert_eq "COMPLETE" "$(tr -d '[:space:]' <"$MONITOR_COMPLETE_REPO/.autoship/workspaces/issue-998/status")" "monitor marks dead worker complete when fresh result artifact exists"
+
+SUPERVISOR_REPO="$TMP_DIR/supervisor-repo"
+mkdir -p "$SUPERVISOR_REPO/.autoship/workspaces/issue-1101" "$SUPERVISOR_REPO/.autoship/workspaces/issue-1102" "$SUPERVISOR_REPO/.autoship/workspaces/issue-1103" "$SUPERVISOR_REPO/hooks/opencode" "$SUPERVISOR_REPO/hooks"
+git init -q "$SUPERVISOR_REPO"
+cp "$SCRIPT_DIR/supervisor-loop.sh" "$SUPERVISOR_REPO/hooks/opencode/supervisor-loop.sh"
+cat >"$SUPERVISOR_REPO/hooks/opencode/monitor-agents.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'monitor\n' >>.autoship/order.log
+SH
+cat >"$SUPERVISOR_REPO/hooks/opencode/process-event-queue.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'events\n' >>.autoship/order.log
+SH
+cat >"$SUPERVISOR_REPO/hooks/opencode/reconcile-state.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'reconcile\n' >>.autoship/order.log
+SH
+cat >"$SUPERVISOR_REPO/hooks/opencode/runner.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'runner\n' >>.autoship/order.log
+SH
+chmod +x "$SUPERVISOR_REPO/hooks/opencode/"*.sh
+cat >"$SUPERVISOR_REPO/.autoship/state.json" <<'JSON'
+{"repo":"owner/repo","issues":{"issue-1101":{"state":"running"},"issue-1102":{"state":"queued"},"issue-1103":{"state":"running"}},"stats":{},"config":{"maxConcurrentAgents":2}}
+JSON
+printf 'RUNNING\n' >"$SUPERVISOR_REPO/.autoship/workspaces/issue-1101/status"
+printf 'QUEUED\n' >"$SUPERVISOR_REPO/.autoship/workspaces/issue-1102/status"
+printf 'RUNNING\n' >"$SUPERVISOR_REPO/.autoship/workspaces/issue-1103/status"
+printf '2026-05-07T00:00:00Z\n' >"$SUPERVISOR_REPO/.autoship/workspaces/issue-1103/started_at"
+printf 'result\n' >"$SUPERVISOR_REPO/.autoship/workspaces/issue-1103/AUTOSHIP_RESULT.md"
+touch -t 202605070000 "$SUPERVISOR_REPO/.autoship/workspaces/issue-1103/started_at"
+touch -t 202605070001 "$SUPERVISOR_REPO/.autoship/workspaces/issue-1103/AUTOSHIP_RESULT.md"
+(
+  cd "$SUPERVISOR_REPO"
+  bash hooks/opencode/supervisor-loop.sh --once >/dev/null
+)
+assert_eq "STUCK" "$(tr -d '[:space:]' <"$SUPERVISOR_REPO/.autoship/workspaces/issue-1101/status")" "supervisor marks RUNNING workspace without worker pid stuck"
+assert_eq "COMPLETE" "$(tr -d '[:space:]' <"$SUPERVISOR_REPO/.autoship/workspaces/issue-1103/status")" "supervisor preserves fresh results from stale RUNNING workspace"
+assert_eq $'monitor\nevents\nreconcile\nrunner' "$(cat "$SUPERVISOR_REPO/.autoship/order.log")" "supervisor runs monitor, event processing, reconcile, and runner in order"
+test -s "$SUPERVISOR_REPO/.autoship/logs/supervisor-loop.log" || fail "supervisor writes a lifecycle log"
 
 QUEUE_REPO="$TMP_DIR/queue-repo"
 mkdir -p "$QUEUE_REPO/.autoship" "$QUEUE_REPO/hooks/opencode" "$QUEUE_REPO/hooks"
