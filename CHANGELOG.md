@@ -1,3 +1,10 @@
+## [2.6.11](https://github.com/Maleick/AutoShip/compare/v2.6.10...v2.6.11) (2026-05-07)
+
+
+### Bug Fixes
+
+* **autoship:** harden audit regressions ([#379](https://github.com/Maleick/AutoShip/issues/379)) ([36d1af2](https://github.com/Maleick/AutoShip/commit/36d1af294f2c20d59c8d322395ecf2d6ee3b1ff9))
+
 ## [2.6.10](https://github.com/Maleick/AutoShip/compare/v2.6.9...v2.6.10) (2026-05-07)
 
 
