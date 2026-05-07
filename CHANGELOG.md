@@ -1,3 +1,10 @@
+## [2.6.2](https://github.com/Maleick/AutoShip/compare/v2.6.1...v2.6.2) (2026-05-07)
+
+
+### Bug Fixes
+
+* **hermes:** increase worker timeout from 30min to 90min ([fa3e65d](https://github.com/Maleick/AutoShip/commit/fa3e65d0ec0dbaaea5965e24c8bcf0c7945f86cd)), closes [#4149](https://github.com/Maleick/AutoShip/issues/4149) [#4151](https://github.com/Maleick/AutoShip/issues/4151) [#4156](https://github.com/Maleick/AutoShip/issues/4156)
+
 ## [2.6.1](https://github.com/Maleick/AutoShip/compare/v2.6.0...v2.6.1) (2026-05-06)
 
 
