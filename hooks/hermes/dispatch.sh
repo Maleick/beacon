@@ -197,10 +197,10 @@ prompt = f"""# Hermes Agent Prompt — AutoShip Issue #{issue_num}
 
 1. Implement the issue — edit code, add tests, update docs as needed
 2. Run validation: `cargo fmt --check`, `cargo clippy --all-targets --all-features`, `cargo test --all --all-features` (or focused tests if full suite is too slow)
-3. Commit ALL changes with a Conventional Commit message: `git add -A && git commit -m "feat(scope): description (#{issue_num})"`
+3. Commit source changes with a Conventional Commit message. Stage only implementation files and exclude AutoShip/Hermes runtime artifacts.
 4. Push the branch: `git push origin $(git branch --show-current)`
 5. Create a PR: `gh pr create --title "feat: {title}" --body "Closes #{issue_num}"`
-6. Write `HERMES_RESULT.md` in the workspace root with:
+6. Write `HERMES_RESULT.md` in the workspace root for orchestration, but do not stage or commit it. Include:
    - status: COMPLETE or BLOCKED
    - files_changed: list of files modified/created
    - validation_results: output of test commands
@@ -215,6 +215,7 @@ If you cannot complete, write HERMES_RESULT.md with status BLOCKED and reason.
 - Implement per acceptance criteria.
 - Run project checks: cargo fmt --check, cargo clippy --target x86_64-unknown-linux-gnu, cargo test --target x86_64-unknown-linux-gnu (or focused tests if full suite is too slow).
 - Commit with conventional format: "feat|fix|docs|refactor(scope): description (#{issue_num})".
+- Do not commit runtime artifacts: .autoship/, status, HERMES_PROMPT.md, HERMES_RESULT.md, runner.log, started_at, target-isolated/.
 - **PUSH branch to origin**: `git push origin autoship/issue-{issue_num}`
 - **CREATE PR via gh CLI**: `gh pr create --title "..." --body "Closes #{issue_num}" --base {base_branch} --head autoship/issue-{issue_num}`
 - **DO NOT manually close the GitHub issue**. The `Closes #{issue_num}` PR body will close it only after the PR is merged. Manually closing issues while PRs are still open blocks follow-up automation.
