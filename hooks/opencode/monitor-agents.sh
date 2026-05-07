@@ -50,18 +50,25 @@ emit_event() {
     '{type: $type, issue: $issue, priority: 2, data: {status: $status}, queued_at: $ts}')
 
   write_event() {
-    jq --argjson evt "$event" '. + [$evt]' "$EVENT_QUEUE" >"${EVENT_QUEUE}.tmp" 2>/dev/null
-    mv "${EVENT_QUEUE}.tmp" "$EVENT_QUEUE" 2>/dev/null || true
-    touch "$marker" 2>/dev/null || true
+    local tmp
+    tmp=$(mktemp "$AUTOSHIP_DIR/event-queue.tmp.XXXXXX")
+    if jq --argjson evt "$event" '. + [$evt]' "$EVENT_QUEUE" >"$tmp" 2>/dev/null && mv "$tmp" "$EVENT_QUEUE"; then
+      touch "$marker" 2>/dev/null || true
+    else
+      rm -f "$tmp"
+      return 1
+    fi
   }
 
-  # Skip flock on macOS (Darwin) due to compatibility issues with fd-based locking
-  if command -v flock >/dev/null 2>&1 && [[ "$(uname -s)" != "Darwin" ]]; then
+  if [[ "$(uname -s 2>/dev/null || true)" == "Darwin" ]] && command -v lockf >/dev/null 2>&1; then
+    AUTOSHIP_EVENT_JSON="$event" AUTOSHIP_EVENT_QUEUE="$EVENT_QUEUE" AUTOSHIP_EVENT_DIR="$AUTOSHIP_DIR" AUTOSHIP_EVENT_MARKER="$marker" \
+      lockf -k "$LOCK_FILE" bash -c 'tmp=$(mktemp "$AUTOSHIP_EVENT_DIR/event-queue.tmp.XXXXXX"); if jq --argjson evt "$AUTOSHIP_EVENT_JSON" ". + [\$evt]" "$AUTOSHIP_EVENT_QUEUE" >"$tmp" && mv "$tmp" "$AUTOSHIP_EVENT_QUEUE"; then touch "$AUTOSHIP_EVENT_MARKER" 2>/dev/null || true; else rm -f "$tmp"; exit 1; fi'
+  elif command -v flock >/dev/null 2>&1; then
     (
       if flock -x 200 2>/dev/null; then
         write_event
       else
-        write_event
+        return 1
       fi
     ) 200>"$LOCK_FILE"
   else
@@ -132,7 +139,7 @@ check_stalled() {
   ((timeout_secs > 0)) || timeout_secs=900
 
   if ((elapsed > timeout_secs)); then
-    local current_status=$(cat "$status_file" 2>/dev/null || echo "")
+    local current_status=$(tr -d '\r\n' <"$status_file" 2>/dev/null || echo "")
     if [[ "$current_status" == "RUNNING" ]]; then
       if has_implementation_changes "$dir"; then
         echo "COMPLETE" >"$status_file"
@@ -192,7 +199,7 @@ for dir in "$WORKSPACES_DIR"/*/; do
 
   [[ ! -f "$status_file" ]] && continue
 
-  status=$(cat "$status_file" 2>/dev/null || echo "")
+  status=$(tr -d '\r\n' <"$status_file" 2>/dev/null || echo "")
 
   case "$status" in
     COMPLETE)
