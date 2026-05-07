@@ -1,3 +1,10 @@
+## [2.6.9](https://github.com/Maleick/AutoShip/compare/v2.6.8...v2.6.9) (2026-05-07)
+
+
+### Bug Fixes
+
+* **release:** sync version marker ([#378](https://github.com/Maleick/AutoShip/issues/378)) ([a62534b](https://github.com/Maleick/AutoShip/commit/a62534b3d2c5a1687c55949bceb2e6dce182c2c2))
+
 ## [2.6.8](https://github.com/Maleick/AutoShip/compare/v2.6.7...v2.6.8) (2026-05-07)
 
 
