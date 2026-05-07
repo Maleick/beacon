@@ -63,7 +63,7 @@ if [[ -n "${1:-}" ]]; then
     exit 1
   fi
 
-  current_status=$(cat "$status_file" 2>/dev/null || echo "unknown")
+  current_status=$(cat "$status_file" 2>/dev/null | tr -d '\r\n' || echo "unknown")
   if [[ "$current_status" == "COMPLETE" || "$current_status" == "BLOCKED" ]]; then
     echo "Issue $ISSUE_KEY status=$current_status — not dispatchable"
     exit 0
@@ -175,7 +175,7 @@ Do NOT run cargo directly in WSL — it will fail due to missing MSVC linker (li
     fi
 
     # Check result using absolute path
-    result_status=$(cat "$workspace_dir/status" 2>/dev/null || echo "unknown")
+    result_status=$(cat "$workspace_dir/status" 2>/dev/null | tr -d '\r\n' || echo "unknown")
     echo "Result: $ISSUE_KEY = $result_status"
 
     # If still RUNNING after successful hermes chat, mark COMPLETE
