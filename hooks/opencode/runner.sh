@@ -75,10 +75,49 @@ if [[ ! "$MAX" =~ ^[0-9]+$ ]]; then
 fi
 DRY_RUN="${AUTOSHIP_RUNNER_DRY_RUN:-false}"
 
+if [[ -f "$STATE_FILE" ]] && jq -e '.paused == true' "$STATE_FILE" >/dev/null 2>&1; then
+  pause_reason=$(jq -r '.pause_reason // "paused"' "$STATE_FILE" 2>/dev/null || echo "paused")
+  echo "AutoShip paused: $pause_reason"
+  exit 0
+fi
+
+if [[ -x "$SCRIPT_DIR/quota-guard.sh" ]]; then
+  bash "$SCRIPT_DIR/quota-guard.sh" >/dev/null || exit 0
+fi
+
+if [[ -x "$SCRIPT_DIR/resource-monitor.sh" ]]; then
+  resource_info=$(bash "$SCRIPT_DIR/resource-monitor.sh" "$MAX" 2>/dev/null || echo '{"load_status":"ok","recommended_max_concurrent":'$MAX'}')
+  resource_status=$(echo "$resource_info" | jq -r '.load_status // "ok"')
+  recommended_max=$(echo "$resource_info" | jq -r '.recommended_max_concurrent // '$MAX)
+  if [[ "$resource_status" != "ok" && "$recommended_max" =~ ^[0-9]+$ && "$recommended_max" -lt "$MAX" ]]; then
+    resource_label=$(printf '%s' "$resource_status" | tr '[:lower:]' '[:upper:]')
+    echo "RESOURCE_${resource_label}: CPU/MEM load high, reducing concurrency from $MAX to $recommended_max" >&2
+    MAX="$recommended_max"
+  fi
+fi
+
+RUNNER_LOCK_FILE="$AUTOSHIP_DIR/runner.lock"
+if [[ -z "${AUTOSHIP_RUNNER_LOCKED:-}" ]]; then
+  export AUTOSHIP_RUNNER_LOCKED=1
+  mkdir -p "$AUTOSHIP_DIR"
+  if [[ -L "$RUNNER_LOCK_FILE" ]]; then
+    echo "Error: refusing symlink runner lock: $RUNNER_LOCK_FILE" >&2
+    exit 1
+  fi
+  if [[ "$(uname -s 2>/dev/null || true)" == "Darwin" ]] && command -v lockf >/dev/null 2>&1; then
+    exec lockf -k "$RUNNER_LOCK_FILE" "$0" "$@"
+  elif command -v flock >/dev/null 2>&1; then
+    exec 9>"$RUNNER_LOCK_FILE"
+    flock -x 9
+  elif command -v lockf >/dev/null 2>&1; then
+    exec lockf -k "$RUNNER_LOCK_FILE" "$0" "$@"
+  fi
+fi
+
 active_count() {
   local count=0
   if [[ -d "$WORKSPACES_DIR" ]]; then
-    count=$(grep -Rsl '^RUNNING$' "$WORKSPACES_DIR"/*/status 2>/dev/null | wc -l | tr -d ' ' || true)
+    count=$(find "$WORKSPACES_DIR" -maxdepth 2 -name status -exec sh -c 'tr -d "\r\n" <"$1" | grep -qx "RUNNING"' _ {} \; -print 2>/dev/null | wc -l | tr -d ' ' || true)
   fi
   printf '%s\n' "$count"
 }
@@ -114,13 +153,13 @@ run_worker() {
     cargo_target_dir="$PWD/target-isolated"
   fi
   if [[ -n "$cargo_target_dir" ]]; then
-    env \
-      -u OPENCODE -u OPENCODE_CLIENT -u OPENCODE_PID -u OPENCODE_PROCESS_ROLE -u OPENCODE_RUN_ID -u OPENCODE_SERVER_PASSWORD -u OPENCODE_SERVER_USERNAME \
+    env -i \
+      HOME="${HOME:-}" PATH="${PATH:-/usr/bin:/bin}" SHELL="${SHELL:-/bin/sh}" USER="${USER:-}" LOGNAME="${LOGNAME:-}" TMPDIR="${TMPDIR:-/tmp}" XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-}" OPENCODE_CONFIG_DIR="${OPENCODE_CONFIG_DIR:-}" \
       CARGO_TARGET_DIR="$cargo_target_dir" \
       opencode run --model "$model" "$(cat AUTOSHIP_PROMPT.md)"
   else
-    env \
-      -u OPENCODE -u OPENCODE_CLIENT -u OPENCODE_PID -u OPENCODE_PROCESS_ROLE -u OPENCODE_RUN_ID -u OPENCODE_SERVER_PASSWORD -u OPENCODE_SERVER_USERNAME \
+    env -i \
+      HOME="${HOME:-}" PATH="${PATH:-/usr/bin:/bin}" SHELL="${SHELL:-/bin/sh}" USER="${USER:-}" LOGNAME="${LOGNAME:-}" TMPDIR="${TMPDIR:-/tmp}" XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-}" OPENCODE_CONFIG_DIR="${OPENCODE_CONFIG_DIR:-}" \
       opencode run --model "$model" "$(cat AUTOSHIP_PROMPT.md)"
   fi
 }
@@ -369,6 +408,7 @@ for dir in "$WORKSPACES_DIR"/*/; do
     echo "DRY_RUN start $(basename "$dir") with $model"
   else
     (
+      exec 9>&- 2>/dev/null || true
       cd "$dir"
       bash "$SCRIPT_DIR/metrics-collector.sh" record-start "$issue_id" "$model" "$task_type" >/dev/null 2>&1 || true
       if command -v opencode >/dev/null 2>&1; then

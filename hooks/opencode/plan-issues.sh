@@ -40,6 +40,7 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+STATE_FILE="$REPO_ROOT/.autoship/state.json"
 POLICY_JSON='{}'
 if [[ -x "$SCRIPT_DIR/policy.sh" ]]; then
   POLICY_JSON=$(cd "$REPO_ROOT" && bash "$SCRIPT_DIR/policy.sh" json 2>/dev/null || printf '{}')
@@ -56,14 +57,21 @@ cleanup() {
 trap cleanup EXIT
 
 jq -c '.[]' "$ISSUES_FILE" | while IFS= read -r issue; do
+  if [[ -f "$STATE_FILE" ]] && jq -e '.paused == true' "$STATE_FILE" >/dev/null 2>&1; then
+    break
+  fi
   if ! jq -e 'any(.labels[].name; . == "agent:ready")' <<<"$issue" >/dev/null; then
     continue
   fi
-  if jq -e 'any(.labels[].name; . == "agent:running" or . == "agent:blocked" or . == "human:required")' <<<"$issue" >/dev/null; then
+  if jq -e 'any(.labels[].name; . == "agent:running" or . == "agent:blocked" or . == "autoship:in-progress" or . == "autoship:blocked" or . == "human:required")' <<<"$issue" >/dev/null; then
     continue
   fi
 
   issue_num=$(jq -r '.number' <<<"$issue")
+  issue_key="issue-$issue_num"
+  if [[ -f "$STATE_FILE" ]] && jq -e --arg key "$issue_key" '(.issues[$key].state // .issues[$key].status // "") as $state | ["queued","running","verifying","blocked"] | index($state)' "$STATE_FILE" >/dev/null 2>&1; then
+    continue
+  fi
   if command -v gh >/dev/null 2>&1 && gh pr list --state open --search "$issue_num in:title" --json number --jq 'length' 2>/dev/null | grep -qx '[1-9][0-9]*'; then
     jq -c --arg reason "open PR already exists" '. + {blocked_reason: $reason}' <<<"$issue" >>"$blocked_tmp"
     continue

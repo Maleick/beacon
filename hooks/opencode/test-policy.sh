@@ -90,6 +90,42 @@ grep -F '. != "opencode-autoship@latest"' "$REPO_ROOT/hooks/opencode/install.sh"
   || fail "source install must remove legacy opencode-autoship@latest registrations"
 grep -F 'cp -R "$src/src" "$AUTOSHIP_HOME/src"' "$REPO_ROOT/hooks/opencode/sync-release.sh" >/dev/null \
   || fail "source install must sync plugin source dependencies into config-owned assets"
+grep -F 'autoship:in-progress' "$REPO_ROOT/hooks/opencode/plan-issues.sh" >/dev/null \
+  || fail "planner must skip AutoShip in-progress lifecycle labels"
+grep -F '.paused == true' "$REPO_ROOT/hooks/opencode/dispatch.sh" >/dev/null \
+  || fail "dispatcher must honor paused AutoShip state"
+grep -F '.paused == true' "$REPO_ROOT/hooks/opencode/runner.sh" >/dev/null \
+  || fail "runner must honor paused AutoShip state"
+grep -F 'quota-guard.sh' "$REPO_ROOT/hooks/opencode/dispatch.sh" >/dev/null \
+  || fail "dispatcher must gate work with quota guard"
+grep -F 'quota-guard.sh' "$REPO_ROOT/hooks/opencode/runner.sh" >/dev/null \
+  || fail "runner must gate work with quota guard"
+grep -F 'resource-monitor.sh' "$REPO_ROOT/hooks/opencode/runner.sh" >/dev/null \
+  || fail "runner must enforce resource monitor concurrency recommendations"
+grep -F 'runner.lock' "$REPO_ROOT/hooks/opencode/runner.sh" >/dev/null \
+  || fail "runner must serialize queue scheduling with a lock"
+grep -F 'lockf -k "$LOCK_FILE"' "$REPO_ROOT/hooks/opencode/monitor-agents.sh" >/dev/null \
+  || fail "monitor must lock event queue writes on macOS"
+grep -F 'mktemp "$AUTOSHIP_DIR/event-queue.tmp.XXXXXX"' "$REPO_ROOT/hooks/opencode/monitor-agents.sh" >/dev/null \
+  || fail "monitor must use unique event queue temp files"
+grep -F 'sanitize_issue_body' "$REPO_ROOT/hooks/opencode/dispatch.sh" >/dev/null \
+  || fail "dispatcher must sanitize untrusted issue bodies"
+grep -F '<<<USER_ISSUE_BODY>>>' "$REPO_ROOT/hooks/opencode/dispatch.sh" >/dev/null \
+  || fail "dispatcher must wrap untrusted issue bodies as data"
+grep -F 'sanitize_issue_field' "$REPO_ROOT/hooks/opencode/dispatch.sh" >/dev/null \
+  || fail "dispatcher must sanitize untrusted issue titles and labels"
+grep -F 'USER_ISSUE_BODY_DELIMITER' "$REPO_ROOT/hooks/opencode/sanitize-issue.sh" >/dev/null \
+  || fail "issue sanitizer must escape prompt wrapper delimiters"
+grep -F '.dispatch.lock' "$REPO_ROOT/hooks/opencode/dispatch.sh" >/dev/null \
+  || fail "dispatcher must lock per issue before workspace creation"
+grep -F 'exec 9>&-' "$REPO_ROOT/hooks/opencode/runner.sh" >/dev/null \
+  || fail "runner workers must not inherit scheduler lock fd"
+grep -F 'tr -d' "$REPO_ROOT/hooks/opencode/monitor-agents.sh" | grep -F '\r\n' >/dev/null \
+  || fail "monitor must normalize CRLF status reads"
+grep -F '&& mv "$tmp" "$EVENT_QUEUE"' "$REPO_ROOT/hooks/opencode/monitor-agents.sh" >/dev/null \
+  || fail "monitor must only replace event queue after successful jq write"
+grep -F 'env -i' "$REPO_ROOT/hooks/opencode/runner.sh" >/dev/null \
+  || fail "runner must use an allowlisted worker environment"
 grep -F 'hermes cron create' "$REPO_ROOT/hooks/hermes/runner.sh" >/dev/null \
   || fail "Hermes runner must create one-shot cronjobs"
 grep -F 'current_status" == "STUCK"' "$REPO_ROOT/hooks/hermes/runner.sh" >/dev/null \
@@ -141,7 +177,9 @@ cat >"$ISSUES_FILE" <<'JSON'
   {"number": 746, "title": "low safe docs", "body": "update docs", "labels": [{"name": "agent:ready"}, {"name": "documentation"}, {"name": "size-s"}]},
   {"number": 748, "title": "VM fingerprint evasion research", "body": "hide hooks from anti-cheat detection", "labels": [{"name": "agent:ready"}, {"name": "security"}]},
   {"number": 749, "title": "middle safe bug", "body": "fix the setting", "labels": [{"name": "agent:ready"}, {"name": "bug"}]},
-  {"number": 750, "title": "already running", "body": "safe", "labels": [{"name": "agent:ready"}, {"name": "agent:running"}]}
+  {"number": 750, "title": "already running", "body": "safe", "labels": [{"name": "agent:ready"}, {"name": "agent:running"}]},
+  {"number": 751, "title": "autoship running", "body": "safe", "labels": [{"name": "agent:ready"}, {"name": "autoship:in-progress"}]},
+  {"number": 752, "title": "autoship blocked", "body": "safe", "labels": [{"name": "agent:ready"}, {"name": "autoship:blocked"}]}
 ]
 JSON
 
@@ -155,6 +193,19 @@ assert_eq "" "$blocked_numbers" "content-based safety filter does not block issu
 
 limited_numbers=$(bash "$SCRIPT_DIR/plan-issues.sh" --issues-file "$ISSUES_FILE" --limit 2 | jq -r '.eligible[].number' | paste -sd ' ' -)
 assert_eq "746 748" "$limited_numbers" "plan limit caps eligible queue"
+
+QUOTA_REPO="$TMP_DIR/quota-repo"
+git init -q "$QUOTA_REPO"
+mkdir -p "$QUOTA_REPO/.autoship"
+printf '%s\n' '{"config":{"maxConcurrentAgents":10},"issues":{},"stats":{}}' >"$QUOTA_REPO/.autoship/state.json"
+printf '%s\n' '{"opencode":{"available":true,"quota_pct":99,"dispatches":0}}' >"$QUOTA_REPO/.autoship/quota.json"
+(
+  cd "$QUOTA_REPO"
+  if AUTOSHIP_QUOTA_PAUSE_THRESHOLD=95 bash "$SCRIPT_DIR/quota-guard.sh" >"$TMP_DIR/quota-guard.out" 2>&1; then
+    fail "quota guard must pause on nested opencode quota percentage"
+  fi
+  jq -e '.paused == true and .pause_reason == "quota guardrail"' .autoship/state.json >/dev/null || fail "quota guard writes paused state"
+)
 
 fix_title=$(bash "$SCRIPT_DIR/pr-title.sh" --issue 2298 --title "Validate Discord webhook URLs" --labels "bug,security,agent:ready")
 docs_title=$(bash "$SCRIPT_DIR/pr-title.sh" --issue 2296 --title "mandate poison recovery pattern" --labels "documentation,agent:ready")
