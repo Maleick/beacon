@@ -116,23 +116,9 @@ if [[ -n "${1:-}" ]]; then
   if command -v hermes &>/dev/null; then
     # Hermes CLI available — spawn hermes chat.
     cd "$worktree_path"
-    # Timeout: configurable; default 30 minutes for AutoShip workers
-    # Use gtimeout on macOS, timeout on Linux
-    TIMEOUT_CMD=""
-    if command -v gtimeout &>/dev/null; then
-      TIMEOUT_CMD="gtimeout"
-    elif command -v timeout &>/dev/null; then
-      TIMEOUT_CMD="timeout"
-    fi
-    if [[ -z "$TIMEOUT_CMD" ]]; then
-      echo "Error: timeout/gtimeout required for Hermes runner" >&2
-      printf 'BLOCKED\n' >"$status_file"
-      autoship_state_set set-blocked "$ISSUE_KEY" reason="timeout_unavailable"
-      exit 0
-    fi
+    # NO TIMEOUT: Workers run until they finish. The orchestrator checks status.
     export GH_TOKEN="${GH_TOKEN:-}"
     export HERMES_TARGET_REPO_PATH="${HERMES_TARGET_REPO_PATH:-$REPO_ROOT}"
-    HERMES_WORKER_TIMEOUT_SECONDS="${HERMES_WORKER_TIMEOUT_SECONDS:-5400}"
     HERMES_MODEL_ARGS=()
     if [[ -n "${HERMES_MODEL:-}" ]]; then
       HERMES_MODEL_ARGS+=(--model "$HERMES_MODEL")
@@ -168,27 +154,20 @@ Do NOT run cargo directly in WSL — it will fail due to missing MSVC linker (li
       fi
     fi
     
-    "$TIMEOUT_CMD" "$HERMES_WORKER_TIMEOUT_SECONDS" hermes chat "${HERMES_MODEL_ARGS[@]}" -q "$(cat "$prompt_file")" --quiet || {
-      exit_code=$?
-      # Restore original prompt if we modified it
-      if [[ -f "$workspace_dir/prompt.bak" ]]; then
-        mv "$workspace_dir/prompt.bak" "$prompt_file"
-      fi
-      if [[ $exit_code -eq 124 ]]; then
-        echo "TIMEOUT: $ISSUE_KEY exceeded ${HERMES_WORKER_TIMEOUT_SECONDS}s"
-        printf 'STUCK\n' >"$status_file"
-        autoship_state_set set-stuck "$ISSUE_KEY" reason="timeout_${HERMES_WORKER_TIMEOUT_SECONDS}s"
-      else
-        echo "ERROR: $ISSUE_KEY exited with code $exit_code"
-        printf 'BLOCKED\n' >"$status_file"
-        autoship_state_set set-blocked "$ISSUE_KEY" reason="exit_code_$exit_code"
-      fi
-      exit 0
-    }
-    
+    # Run hermes chat WITHOUT timeout. Worker runs until complete.
+    # The orchestrator checks status via status file and process polling.
+    hermes chat "${HERMES_MODEL_ARGS[@]}" -q "$(cat "$prompt_file")" --quiet
+    exit_code=$?
     # Restore original prompt if we modified it
     if [[ -f "$workspace_dir/prompt.bak" ]]; then
       mv "$workspace_dir/prompt.bak" "$prompt_file"
+    fi
+
+    if [[ $exit_code -ne 0 ]]; then
+      echo "ERROR: $ISSUE_KEY exited with code $exit_code"
+      printf 'BLOCKED\n' >"$workspace_dir/status"
+      autoship_state_set set-blocked "$ISSUE_KEY" reason="exit_code_$exit_code"
+      exit 0
     fi
 
     # Check result using absolute path
