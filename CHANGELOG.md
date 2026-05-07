@@ -1,3 +1,10 @@
+## [2.6.7](https://github.com/Maleick/AutoShip/compare/v2.6.6...v2.6.7) (2026-05-07)
+
+
+### Bug Fixes
+
+* **opencode:** clean stale autoship plugin installs ([#375](https://github.com/Maleick/AutoShip/issues/375)) ([51d200b](https://github.com/Maleick/AutoShip/commit/51d200bac230e16907cd2faa2c5d7d043e15daf0)), closes [#4153](https://github.com/Maleick/AutoShip/issues/4153) [#4154](https://github.com/Maleick/AutoShip/issues/4154) [#4156](https://github.com/Maleick/AutoShip/issues/4156) [#4158](https://github.com/Maleick/AutoShip/issues/4158)
+
 ## [2.6.6](https://github.com/Maleick/AutoShip/compare/v2.6.5...v2.6.6) (2026-05-07)
 
 
