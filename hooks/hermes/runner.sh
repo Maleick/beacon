@@ -212,8 +212,9 @@ Do NOT run cargo directly in WSL — it will fail due to missing MSVC linker (li
 fi
 
 # Batch mode: find and dispatch all queued workspaces
-queued=$(find "$WORKSPACES_DIR" -maxdepth 2 -name "status" -exec grep -l "^QUEUED$" {} \; 2>/dev/null || true)
-running=$(find "$WORKSPACES_DIR" -maxdepth 2 -name "status" -exec grep -l "^RUNNING$" {} \; 2>/dev/null || true)
+# Use tr to strip \r from CRLF line endings before grepping
+queued=$(find "$WORKSPACES_DIR" -maxdepth 2 -name "status" -exec sh -c 'cat "$1" | tr -d "\r" | grep -q "^QUEUED$"' _ {} \; -print 2>/dev/null || true)
+running=$(find "$WORKSPACES_DIR" -maxdepth 2 -name "status" -exec sh -c 'cat "$1" | tr -d "\r" | grep -q "^RUNNING$"' _ {} \; -print 2>/dev/null || true)
 running_count=$(echo "$running" | grep -c "^$WORKSPACES_DIR" || echo 0)
 
 if [[ ! "$running_count" =~ ^[0-9]+$ ]]; then
