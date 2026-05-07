@@ -1,3 +1,10 @@
+## [2.6.10](https://github.com/Maleick/AutoShip/compare/v2.6.9...v2.6.10) (2026-05-07)
+
+
+### Bug Fixes
+
+* **hermes:** STUCK→QUEUED retry, prompt discovery, cleanup always runs ([909ce5f](https://github.com/Maleick/AutoShip/commit/909ce5f21afa99625f377ac31c1be71c0e73342f))
+
 ## [2.6.9](https://github.com/Maleick/AutoShip/compare/v2.6.8...v2.6.9) (2026-05-07)
 
 
