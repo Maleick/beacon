@@ -32,7 +32,8 @@ REPO_ROOT=$(autoship_repo_root) || exit 1
 cd "$REPO_ROOT"
 
 AUTOSHIP_DIR="$REPO_ROOT/.autoship"
-WORKSPACES_DIR="$AUTOSHIP_DIR/workspaces"
+# Hermes workspaces live in the target repo (where worktrees are created), not AutoShip's repo
+WORKSPACES_DIR="${HERMES_TARGET_REPO_PATH:-$REPO_ROOT}/.autoship/workspaces"
 
 # Read Hermes max concurrent from config.yaml; allow AutoShip runs to cap lower.
 MAX="${HERMES_MAX_WORKERS:-20}"
@@ -60,6 +61,13 @@ if [[ -n "${1:-}" ]]; then
     exit 0
   fi
 
+  # STUCK retry: if stuck, reset to QUEUED and allow retry
+  if [[ "$current_status" == "STUCK" ]]; then
+    echo "Issue $ISSUE_KEY was STUCK — resetting to QUEUED for retry"
+    printf 'QUEUED\n' >"$status_file"
+    current_status="QUEUED"
+  fi
+
   # Mark running
   printf 'RUNNING\n' >"$status_file"
   autoship_state_set set-running "$ISSUE_KEY" agent="hermes/default"
@@ -71,7 +79,7 @@ if [[ -n "${1:-}" ]]; then
   worktree_path=""
   HERMES_TARGET_REPO_PATH="${HERMES_TARGET_REPO_PATH:-$REPO_ROOT}"
   if [[ -n "$HERMES_TARGET_REPO_PATH" ]]; then
-    worktree_path=$(git -C "$HERMES_TARGET_REPO_PATH" worktree list --porcelain 2>/dev/null | grep -B1 "autoship/issue-${ISSUE_NUM}$" | grep "^worktree " | awk '{print $2}' || echo "")
+    worktree_path=$(git -C "$HERMES_TARGET_REPO_PATH" worktree list --porcelain 2>/dev/null | grep -B1 "autoship/issue-${ISSUE_NUM}" | grep "^worktree " | awk '{print $2}' || echo "")
   fi
   if [[ -z "$worktree_path" || ! -d "$worktree_path" ]]; then
     # Fallback: search AutoShip workspace locations
@@ -92,27 +100,12 @@ if [[ -n "${1:-}" ]]; then
 
   echo "Dispatching $ISSUE_KEY in $worktree_path"
 
-  # Execute with Hermes CLI in both cron and active-session contexts.
+  # Execute via Hermes cronjob (one-shot) instead of hermes chat.
+  # hermes chat cannot autonomously use tools; cronjobs run with full
+  # tool access in a proper Hermes environment.
   if command -v hermes &>/dev/null; then
-    # Hermes CLI available — spawn hermes chat.
-    cd "$worktree_path"
-    # Timeout: configurable; default 30 minutes for AutoShip workers
-    # Use gtimeout on macOS, timeout on Linux
-    TIMEOUT_CMD=""
-    if command -v gtimeout &>/dev/null; then
-      TIMEOUT_CMD="gtimeout"
-    elif command -v timeout &>/dev/null; then
-      TIMEOUT_CMD="timeout"
-    fi
-    if [[ -z "$TIMEOUT_CMD" ]]; then
-      echo "Error: timeout/gtimeout required for Hermes runner" >&2
-      printf 'BLOCKED\n' >"$status_file"
-      autoship_state_set set-blocked "$ISSUE_KEY" reason="timeout_unavailable"
-      exit 0
-    fi
     export GH_TOKEN="${GH_TOKEN:-}"
     export HERMES_TARGET_REPO_PATH="${HERMES_TARGET_REPO_PATH:-$REPO_ROOT}"
-    HERMES_WORKER_TIMEOUT_SECONDS="${HERMES_WORKER_TIMEOUT_SECONDS:-1800}"
     HERMES_MODEL_ARGS=()
     if [[ -n "${HERMES_MODEL:-}" ]]; then
       HERMES_MODEL_ARGS+=(--model "$HERMES_MODEL")
@@ -120,40 +113,35 @@ if [[ -n "${1:-}" ]]; then
     if [[ -n "${HERMES_PROVIDER:-}" ]]; then
       HERMES_MODEL_ARGS+=(--provider "$HERMES_PROVIDER")
     fi
-    "$TIMEOUT_CMD" "$HERMES_WORKER_TIMEOUT_SECONDS" hermes chat "${HERMES_MODEL_ARGS[@]}" -q "$(cat "$workspace_dir/HERMES_PROMPT.md")" --worktree --quiet || {
-      exit_code=$?
-      if [[ $exit_code -eq 124 ]]; then
-        echo "TIMEOUT: $ISSUE_KEY exceeded ${HERMES_WORKER_TIMEOUT_SECONDS}s"
-        printf 'STUCK\n' >"$status_file"
-        autoship_state_set set-stuck "$ISSUE_KEY" reason="timeout_${HERMES_WORKER_TIMEOUT_SECONDS}s"
-      else
-        echo "ERROR: $ISSUE_KEY exited with code $exit_code"
-        printf 'BLOCKED\n' >"$status_file"
-        autoship_state_set set-blocked "$ISSUE_KEY" reason="exit_code_$exit_code"
-      fi
+
+    # Create a one-shot cronjob that runs the prompt with full tools
+    job_name="autoship-${ISSUE_KEY}-$(date +%s)"
+    prompt_path="$workspace_dir/HERMES_PROMPT.md"
+    deliver_target="${HERMES_DELIVER_TARGET:-origin}"
+
+    echo "Creating cronjob for $ISSUE_KEY..."
+    cron_output=$(hermes cron create \
+      --name "$job_name" \
+      --workdir "$worktree_path" \
+      --deliver "$deliver_target" \
+      --repeat 1 \
+      "1m" \
+      "$(cat "$prompt_path")" \
+      "${HERMES_MODEL_ARGS[@]}" 2>&1) || true
+
+    if echo "$cron_output" | grep -q "Failed to create job"; then
+      echo "ERROR: Failed to create cronjob for $ISSUE_KEY: $cron_output"
+      printf 'BLOCKED\n' >"$status_file"
+      autoship_state_set set-blocked "$ISSUE_KEY" reason="cronjob_create_failed"
       exit 0
-    }
-
-    # Check result using absolute path
-    result_status=$(cat "$workspace_dir/status" 2>/dev/null || echo "unknown")
-    echo "Result: $ISSUE_KEY = $result_status"
-
-    # If still RUNNING after successful hermes chat, mark COMPLETE
-    if [[ "$result_status" == "RUNNING" ]]; then
-      printf 'COMPLETE\n' >"$workspace_dir/status"
-      result_status="COMPLETE"
     fi
 
-    if [[ "$result_status" == "COMPLETE" ]]; then
-      autoship_state_set set-complete "$ISSUE_KEY"
-      # Trigger PR creation. Hermes workers write HERMES_RESULT.md, while the
-      # shared OpenCode PR helper defaults to AUTOSHIP_RESULT.md.
-      bash "$SCRIPT_DIR/../opencode/create-pr.sh" "$ISSUE_NUM" "$worktree_path" "$worktree_path/HERMES_RESULT.md"
-    elif [[ "$result_status" == "BLOCKED" ]]; then
-      autoship_state_set set-blocked "$ISSUE_KEY"
-    elif [[ "$result_status" == "STUCK" ]]; then
-      autoship_state_set set-stuck "$ISSUE_KEY"
-    fi
+    echo "Cronjob created: $job_name"
+    echo "$cron_output"
+    # Mark as RUNNING — the cronjob will update to COMPLETE/BLOCKED/STUCK
+    # when it finishes. We don't wait here.
+    printf 'RUNNING\n' >"$status_file"
+    autoship_state_set set-running "$ISSUE_KEY" agent="hermes/cronjob"
   else
     echo "Hermes not available — cannot execute"
     printf 'BLOCKED\n' >"$status_file"
