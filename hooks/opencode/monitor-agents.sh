@@ -69,6 +69,33 @@ emit_event() {
   fi
 }
 
+is_runtime_artifact() {
+  case "$1" in
+    .autoship | .autoship/* | AUTOSHIP_PROMPT.md | AUTOSHIP_RESULT.md | AUTOSHIP_RUNNER.log | HERMES_PROMPT.md | HERMES_RESULT.md | BLOCKED_REASON.txt | model | role | routing-log.txt | runner.log | started_at | status | worker.pid | target-isolated | target-isolated/*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+has_implementation_changes() {
+  local dir="$1"
+  git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
+  local git_root dir_root
+  git_root=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null || true)
+  dir_root=$(cd "$dir" && pwd -P)
+  [[ "$git_root" == "$dir_root" ]] || return 1
+  git -C "$dir" status --porcelain | while IFS= read -r line; do
+    path="${line#???}"
+    case "$line" in
+      R* | C*) path="${path#* -> }" ;;
+    esac
+    if ! is_runtime_artifact "$path"; then
+      printf '%s\n' "$path"
+    fi
+  done | grep -q '^'
+}
+
 check_stalled() {
   local dir="$1"
   local key=$(basename "$dir")
@@ -107,9 +134,14 @@ check_stalled() {
   if ((elapsed > timeout_secs)); then
     local current_status=$(cat "$status_file" 2>/dev/null || echo "")
     if [[ "$current_status" == "RUNNING" ]]; then
-      echo "STUCK" >"$status_file"
-      autoship_capture_failure timeout "$key" "error_summary=worker exceeded ${timeout_secs}s runtime"
-      emit_event "stuck" "$key" "STUCK"
+      if has_implementation_changes "$dir"; then
+        echo "COMPLETE" >"$status_file"
+        emit_event "verify" "$key" "COMPLETE"
+      else
+        echo "STUCK" >"$status_file"
+        autoship_capture_failure timeout "$key" "error_summary=worker exceeded ${timeout_secs}s runtime"
+        emit_event "stuck" "$key" "STUCK"
+      fi
     fi
   fi
 }
@@ -125,10 +157,13 @@ is_worker_live() {
 
 has_fresh_result() {
   local dir="$1"
-  local result_file="$dir/AUTOSHIP_RESULT.md"
+  local result_file
   local started_file="$dir/started_at"
-  [[ -s "$result_file" ]] || return 1
-  [[ ! -f "$started_file" || "$result_file" -nt "$started_file" ]]
+  for result_file in "$dir/AUTOSHIP_RESULT.md" "$dir/HERMES_RESULT.md"; do
+    [[ -s "$result_file" ]] || continue
+    [[ ! -f "$started_file" || "$result_file" -nt "$started_file" ]] && return 0
+  done
+  return 1
 }
 
 reconcile_exited_worker() {

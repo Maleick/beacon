@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermes agent runner — execute Hermes worker via delegate_task with timeout
+# Hermes agent runner — execute Hermes workers via one-shot cronjobs
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -69,6 +69,12 @@ if [[ -n "${1:-}" ]]; then
     exit 0
   fi
 
+  if [[ "$current_status" == "STUCK" ]]; then
+    echo "Issue $ISSUE_KEY was STUCK — resetting to QUEUED for retry"
+    printf 'QUEUED\n' >"$status_file"
+    current_status="QUEUED"
+  fi
+
   # Mark running
   printf 'RUNNING\n' >"$status_file"
   autoship_state_set set-running "$ISSUE_KEY" agent="hermes/default"
@@ -80,7 +86,7 @@ if [[ -n "${1:-}" ]]; then
   worktree_path=""
   HERMES_TARGET_REPO_PATH="${HERMES_TARGET_REPO_PATH:-$REPO_ROOT}"
   if [[ -n "$HERMES_TARGET_REPO_PATH" ]]; then
-    worktree_path=$(git -C "$HERMES_TARGET_REPO_PATH" worktree list --porcelain 2>/dev/null | grep -B1 "autoship/issue-${ISSUE_NUM}$" | grep "^worktree " | awk '{print $2}' || echo "")
+    worktree_path=$(git -C "$HERMES_TARGET_REPO_PATH" worktree list --porcelain 2>/dev/null | grep -B1 "branch refs/heads/autoship/issue-${ISSUE_NUM}$" | grep "^worktree " | awk '{print $2}' || echo "")
   fi
   if [[ -z "$worktree_path" || ! -d "$worktree_path" ]]; then
     # Fallback: search AutoShip workspace locations — include HERMES_TARGET_REPO_PATH workspaces
@@ -116,11 +122,9 @@ if [[ -n "${1:-}" ]]; then
 
   echo "Dispatching $ISSUE_KEY in $worktree_path"
 
-  # Execute with Hermes CLI in both cron and active-session contexts.
+  # Execute via Hermes cronjob so workers get full tool access.
   if command -v hermes &>/dev/null; then
-    # Hermes CLI available — spawn hermes chat.
     cd "$worktree_path"
-    # NO TIMEOUT: Workers run until they finish. The orchestrator checks status.
     export GH_TOKEN="${GH_TOKEN:-}"
     export HERMES_TARGET_REPO_PATH="${HERMES_TARGET_REPO_PATH:-$REPO_ROOT}"
     HERMES_MODEL_ARGS=()
@@ -130,19 +134,18 @@ if [[ -n "${1:-}" ]]; then
     if [[ -n "${HERMES_PROVIDER:-}" ]]; then
       HERMES_MODEL_ARGS+=(--provider "$HERMES_PROVIDER")
     fi
-    
+
     # WINDOWS BRIDGE: For repos that require Windows-native builds (MSVC),
-    # use the windows_bridge.py script instead of hermes chat in WSL.
+    # use the windows_bridge.py script instead of direct WSL validation.
     # The bridge writes .ps1 scripts to Windows temp and executes via powershell -File.
     WINDOWS_BRIDGE="${WINDOWS_BRIDGE_PATH:-$HOME/.hermes/scripts/windows_bridge.py}"
     if [[ -f "$WINDOWS_BRIDGE" && -f "$worktree_path/.cargo/config.toml" ]]; then
       # Detect Windows-targeted cargo config
       if grep -q "x86_64-pc-windows-msvc" "$worktree_path/.cargo/config.toml" 2>/dev/null; then
         echo "Windows target detected — using bridge: $WINDOWS_BRIDGE"
-        # The bridge runs cargo check on Windows host; we still need hermes chat
-        # for the actual code editing. Solution: run hermes chat with a modified
-        # prompt that tells the agent to use the bridge for validation.
-        # For now: run hermes chat but prepend bridge instructions to prompt.
+        # The bridge runs cargo check on Windows host; the worker prompt tells
+        # Hermes to use it for validation when needed.
+        # Prepend bridge instructions to the prompt.
         bridge_instructions="
 
 ## WINDOWS BUILD INSTRUCTIONS
@@ -154,13 +157,20 @@ Do NOT run cargo directly in WSL — it will fail due to missing MSVC linker (li
 "
         # Append bridge instructions to prompt file temporarily
         cp "$prompt_file" "$workspace_dir/prompt.bak"
-        echo "$bridge_instructions" >> "$prompt_file"
+        echo "$bridge_instructions" >>"$prompt_file"
       fi
     fi
-    
-    # Run hermes chat WITHOUT timeout. Worker runs until complete.
-    # The orchestrator checks status via status file and process polling.
-    hermes chat "${HERMES_MODEL_ARGS[@]}" -q "$(cat "$prompt_file")" --quiet
+
+    job_name="autoship-${ISSUE_KEY}-$(date +%s)"
+    deliver_target="${HERMES_DELIVER_TARGET:-origin}"
+    hermes cron create \
+      --name "$job_name" \
+      --workdir "$worktree_path" \
+      --deliver "$deliver_target" \
+      --repeat 1 \
+      "1m" \
+      "$(cat "$prompt_file")" \
+      "${HERMES_MODEL_ARGS[@]}"
     exit_code=$?
     # Restore original prompt if we modified it
     if [[ -f "$workspace_dir/prompt.bak" ]]; then
@@ -168,44 +178,15 @@ Do NOT run cargo directly in WSL — it will fail due to missing MSVC linker (li
     fi
 
     if [[ $exit_code -ne 0 ]]; then
-      echo "ERROR: $ISSUE_KEY exited with code $exit_code"
+      echo "ERROR: $ISSUE_KEY cron creation exited with code $exit_code"
       printf 'BLOCKED\n' >"$workspace_dir/status"
-      autoship_state_set set-blocked "$ISSUE_KEY" reason="exit_code_$exit_code"
+      autoship_state_set set-blocked "$ISSUE_KEY" reason="cron_create_exit_$exit_code"
       exit 0
     fi
 
-    # Check result using absolute path
-    result_status=$(cat "$workspace_dir/status" 2>/dev/null | tr -d '\r\n' || echo "unknown")
-    echo "Result: $ISSUE_KEY = $result_status"
+    echo "Created Hermes cronjob $job_name for $ISSUE_KEY"
+    exit 0
 
-    # If still RUNNING after successful hermes chat, mark COMPLETE
-    if [[ "$result_status" == "RUNNING" ]]; then
-      printf 'COMPLETE\n' >"$workspace_dir/status"
-      result_status="COMPLETE"
-    fi
-
-    if [[ "$result_status" == "COMPLETE" ]]; then
-      autoship_state_set set-complete "$ISSUE_KEY"
-      # Trigger PR creation. Hermes workers write HERMES_RESULT.md, while the
-      # shared OpenCode PR helper defaults to AUTOSHIP_RESULT.md.
-      # If HERMES_RESULT.md is missing but git has changes, generate one from git status.
-      if [[ ! -s "$worktree_path/HERMES_RESULT.md" ]]; then
-        if git -C "$worktree_path" status --short | grep -q '^'; then
-          {
-            printf '---\nstatus: COMPLETE\nfiles_changed:\n'
-            git -C "$worktree_path" status --short | sed 's/^/  - /'
-            printf 'validation_results: Worker completed but did not write detailed results.\n'
-            printf 'pr_url: \n'
-          } > "$worktree_path/HERMES_RESULT.md"
-          echo "Generated fallback HERMES_RESULT.md for $ISSUE_KEY"
-        fi
-      fi
-      bash "$SCRIPT_DIR/../opencode/create-pr.sh" "$ISSUE_NUM" "$worktree_path" "$worktree_path/HERMES_RESULT.md"
-    elif [[ "$result_status" == "BLOCKED" ]]; then
-      autoship_state_set set-blocked "$ISSUE_KEY"
-    elif [[ "$result_status" == "STUCK" ]]; then
-      autoship_state_set set-stuck "$ISSUE_KEY"
-    fi
   else
     echo "Hermes not available — cannot execute"
     printf 'BLOCKED\n' >"$status_file"
@@ -278,7 +259,7 @@ while IFS= read -r status_file; do
 
   started=$((started + 1))
   echo "Dispatched $issue_key (prompt=$prompt_file)"
-done <<< "$queued"
+done <<<"$queued"
 
 echo "Started $started Hermes workers"
 

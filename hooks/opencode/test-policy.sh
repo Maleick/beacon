@@ -65,11 +65,29 @@ grep -F '"$HOOKS_DIR/hermes"/*.sh' "$SCRIPT_DIR/check.sh" >/dev/null \
 if grep -Eq 'DELEGATED|DELEGATE_TASK_READY|Parent agent should now call delegate_task' "$REPO_ROOT/hooks/hermes/runner.sh"; then
   fail "Hermes runner must execute production work instead of writing delegate_task markers"
 fi
+if grep -F 'hermes chat' "$REPO_ROOT/hooks/hermes/runner.sh" >/dev/null; then
+  fail "Hermes runner must use cron dispatch instead of hermes chat"
+fi
+grep -F 'hermes cron create' "$REPO_ROOT/hooks/hermes/runner.sh" >/dev/null \
+  || fail "Hermes runner must create one-shot cronjobs"
+grep -F 'current_status" == "STUCK"' "$REPO_ROOT/hooks/hermes/runner.sh" >/dev/null \
+  || fail "Hermes runner must allow retrying STUCK workspaces"
 if grep -F -- '--base master' "$REPO_ROOT/hooks/hermes/dispatch.sh" >/dev/null; then
   fail "Hermes prompt must not hardcode master as PR base"
 fi
 grep -F 'HERMES_BASE_BRANCH' "$REPO_ROOT/hooks/hermes/dispatch.sh" >/dev/null \
   || fail "Hermes dispatch must support configurable or detected base branch"
+if grep -F 'git add -A' "$REPO_ROOT/hooks/hermes/dispatch.sh" >/dev/null; then
+  fail "Hermes prompt must not instruct workers to stage transient files with git add -A"
+fi
+grep -F 'HERMES_PROMPT.md' "$REPO_ROOT/hooks/opencode/create-pr.sh" >/dev/null \
+  || fail "PR creation must ignore Hermes prompt artifacts"
+grep -F 'HERMES_RESULT.md' "$REPO_ROOT/hooks/opencode/create-pr.sh" >/dev/null \
+  || fail "PR creation must ignore Hermes result artifacts"
+grep -F 'runner.log' "$REPO_ROOT/hooks/opencode/create-pr.sh" >/dev/null \
+  || fail "PR creation must ignore Hermes runner logs"
+grep -F 'target-isolated' "$REPO_ROOT/hooks/opencode/create-pr.sh" >/dev/null \
+  || fail "PR creation must ignore isolated build artifacts"
 
 POLICY_REPO="$TMP_DIR/policy-repo"
 mkdir -p "$POLICY_REPO/.autoship" "$POLICY_REPO/hooks/opencode" "$POLICY_REPO/policies"
@@ -652,6 +670,35 @@ printf '2026-04-24T00:00:00Z\n' >"$TIMEOUT_REPO/.autoship/workspaces/issue-1000/
 )
 assert_eq "STUCK" "$(tr -d '[:space:]' <"$TIMEOUT_REPO/.autoship/workspaces/issue-1000/status")" "monitor marks over-timeout running workspace stuck"
 assert_eq "stuck" "$(jq -r '.issues["issue-1000"].state' "$TIMEOUT_REPO/.autoship/state.json")" "monitor reconciles timeout stuck state"
+
+TIMEOUT_CHANGED_REPO="$TMP_DIR/monitor-timeout-changed-repo"
+mkdir -p "$TIMEOUT_CHANGED_REPO/.autoship/workspaces/issue-1001" "$TIMEOUT_CHANGED_REPO/hooks/opencode" "$TIMEOUT_CHANGED_REPO/hooks"
+git init -q "$TIMEOUT_CHANGED_REPO"
+git -C "$TIMEOUT_CHANGED_REPO" config user.email autoship@example.invalid
+git -C "$TIMEOUT_CHANGED_REPO" config user.name AutoShip
+git init -q "$TIMEOUT_CHANGED_REPO/.autoship/workspaces/issue-1001"
+git -C "$TIMEOUT_CHANGED_REPO/.autoship/workspaces/issue-1001" config user.email autoship@example.invalid
+git -C "$TIMEOUT_CHANGED_REPO/.autoship/workspaces/issue-1001" config user.name AutoShip
+printf 'base\n' >"$TIMEOUT_CHANGED_REPO/.autoship/workspaces/issue-1001/src.txt"
+git -C "$TIMEOUT_CHANGED_REPO/.autoship/workspaces/issue-1001" add src.txt
+git -C "$TIMEOUT_CHANGED_REPO/.autoship/workspaces/issue-1001" commit -q -m initial
+printf 'changed\n' >"$TIMEOUT_CHANGED_REPO/.autoship/workspaces/issue-1001/src.txt"
+cp "$SCRIPT_DIR/monitor-agents.sh" "$TIMEOUT_CHANGED_REPO/hooks/opencode/monitor-agents.sh"
+cp "$SCRIPT_DIR/reconcile-state.sh" "$TIMEOUT_CHANGED_REPO/hooks/opencode/reconcile-state.sh"
+cp "$SCRIPT_DIR/../update-state.sh" "$TIMEOUT_CHANGED_REPO/hooks/update-state.sh"
+chmod +x "$TIMEOUT_CHANGED_REPO/hooks/opencode/monitor-agents.sh" "$TIMEOUT_CHANGED_REPO/hooks/opencode/reconcile-state.sh" "$TIMEOUT_CHANGED_REPO/hooks/update-state.sh"
+cat >"$TIMEOUT_CHANGED_REPO/.autoship/state.json" <<'JSON'
+{"repo":"owner/repo","issues":{"issue-1001":{"state":"running"}},"stats":{},"config":{"maxConcurrentAgents":15,"workerTimeoutMs":1000}}
+JSON
+printf '[]\n' >"$TIMEOUT_CHANGED_REPO/.autoship/event-queue.json"
+printf 'RUNNING\n' >"$TIMEOUT_CHANGED_REPO/.autoship/workspaces/issue-1001/status"
+printf '2026-04-24T00:00:00Z\n' >"$TIMEOUT_CHANGED_REPO/.autoship/workspaces/issue-1001/started_at"
+(
+  cd "$TIMEOUT_CHANGED_REPO"
+  bash hooks/opencode/monitor-agents.sh >/dev/null
+)
+assert_eq "COMPLETE" "$(tr -d '[:space:]' <"$TIMEOUT_CHANGED_REPO/.autoship/workspaces/issue-1001/status")" "monitor marks over-timeout changed workspace complete"
+assert_eq "verifying" "$(jq -r '.issues["issue-1001"].state' "$TIMEOUT_CHANGED_REPO/.autoship/state.json")" "monitor queues changed timeout workspace for verification"
 
 MONITOR_COMPLETE_REPO="$TMP_DIR/monitor-complete-repo"
 mkdir -p "$MONITOR_COMPLETE_REPO/.autoship/workspaces/issue-998" "$MONITOR_COMPLETE_REPO/hooks/opencode" "$MONITOR_COMPLETE_REPO/hooks"
