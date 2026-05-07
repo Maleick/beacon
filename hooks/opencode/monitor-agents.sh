@@ -78,7 +78,7 @@ emit_event() {
 
 is_runtime_artifact() {
   case "$1" in
-    .autoship | .autoship/* | AUTOSHIP_PROMPT.md | AUTOSHIP_RESULT.md | AUTOSHIP_RUNNER.log | HERMES_PROMPT.md | HERMES_RESULT.md | BLOCKED_REASON.txt | model | role | routing-log.txt | runner.log | started_at | status | worker.pid | target-isolated | target-isolated/*)
+    .autoship | .autoship/* | AUTOSHIP_PROMPT.md | AUTOSHIP_RESULT.md | AUTOSHIP_RUNNER.log | HERMES_PROMPT.md | HERMES_RESULT.md | BLOCKED_REASON.txt | model | role | routing-log.txt | runner.log | started_at | status | worker.command | worker.pid | target-isolated | target-isolated/*)
       return 0
       ;;
   esac
