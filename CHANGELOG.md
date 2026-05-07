@@ -1,3 +1,10 @@
+## [2.6.3](https://github.com/Maleick/AutoShip/compare/v2.6.2...v2.6.3) (2026-05-07)
+
+
+### Bug Fixes
+
+* **hermes:** remove timeout — workers run until complete ([9ae5be8](https://github.com/Maleick/AutoShip/commit/9ae5be837362b739553b7cf4c4ff2eb72ce54feb)), closes [#4150](https://github.com/Maleick/AutoShip/issues/4150) [#4151](https://github.com/Maleick/AutoShip/issues/4151) [#4152](https://github.com/Maleick/AutoShip/issues/4152) [#4153](https://github.com/Maleick/AutoShip/issues/4153) [#4154](https://github.com/Maleick/AutoShip/issues/4154) [#4155](https://github.com/Maleick/AutoShip/issues/4155) [#4156](https://github.com/Maleick/AutoShip/issues/4156)
+
 ## [2.6.2](https://github.com/Maleick/AutoShip/compare/v2.6.1...v2.6.2) (2026-05-07)
 
 
