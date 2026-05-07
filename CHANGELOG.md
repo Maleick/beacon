@@ -1,3 +1,10 @@
+# [2.7.0](https://github.com/Maleick/AutoShip/compare/v2.6.12...v2.7.0) (2026-05-07)
+
+
+### Features
+
+* **autoship:** add supervisor loop ([#381](https://github.com/Maleick/AutoShip/issues/381)) ([fd0e6ec](https://github.com/Maleick/AutoShip/commit/fd0e6ec38809c90802a34f27f8b13a667e18dde8))
+
 ## [2.6.12](https://github.com/Maleick/AutoShip/compare/v2.6.11...v2.6.12) (2026-05-07)
 
 
