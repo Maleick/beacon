@@ -33,8 +33,12 @@ cd "$REPO_ROOT"
 
 AUTOSHIP_DIR="$REPO_ROOT/.autoship"
 # Allow overriding workspaces directory via HERMES_TARGET_REPO_PATH
+# Default to TextQuest repo if AutoShip is the orchestrator (detect by repo name)
 if [[ -n "${HERMES_TARGET_REPO_PATH:-}" && -d "$HERMES_TARGET_REPO_PATH/.autoship/workspaces" ]]; then
   WORKSPACES_DIR="$HERMES_TARGET_REPO_PATH/.autoship/workspaces"
+elif [[ "$REPO_ROOT" == *"/AutoShip" ]] && [[ -d "/mnt/c/Users/xmale/Projects/TextQuest/.autoship/workspaces" ]]; then
+  # AutoShip orchestrating TextQuest — use TextQuest workspaces
+  WORKSPACES_DIR="/mnt/c/Users/xmale/Projects/TextQuest/.autoship/workspaces"
 else
   WORKSPACES_DIR="$AUTOSHIP_DIR/workspaces"
 fi
